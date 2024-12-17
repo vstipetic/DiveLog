@@ -1,6 +1,7 @@
 from attr import dataclass
 from typing import Optional
 from enum import Enum
+from uuid import uuid4
 
 class GloveSize(Enum):
     S = "S"
@@ -40,6 +41,9 @@ class Gear:
 
     """name of the piece of gear. This is the unique identifier that you will use to refer to this specific piece of gear"""
 
+    unique_id: str = str(uuid4())
+
+    """Unique identifier for the piece of gear. This is generated automatically when the gear is created."""
 
 @dataclass
 class Mask(Gear):
@@ -48,33 +52,33 @@ class Mask(Gear):
 
 @dataclass
 class Suit(Gear):
-    thickness: int
+    thickness: int = 0
 
     """Thickness of the suit in mm"""
 
-    size: int
+    size: int = 0
 
     """Size of the suit"""
 
 
 @dataclass
 class Gloves(Gear):
-    thickness: int
+    thickness: int = 0
 
     """Thickness of the gloves in mm"""
 
-    size: GloveSize
+    size: GloveSize = GloveSize.S
 
     """Size of the gloves, S, M, L or XL"""
 
 
 @dataclass
 class Boots(Gear):
-    thickness: int
+    thickness: int = 0
 
     """Thickness of the suit in mm"""
 
-    size: int
+    size: int = 0
 
     """Size of the boots"""
 

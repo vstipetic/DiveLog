@@ -22,22 +22,12 @@ class GearAdderApp(ttk.Frame):
         self.name_entry = ttk.Entry(self)
         self.name_entry.grid(row=1, column=1, padx=5, pady=5)
         
-        ttk.Label(self, text="Number of Dives:").grid(row=2, column=0, padx=5, pady=5)
-        self.dives_entry = ttk.Entry(self)
-        self.dives_entry.insert(0, "0")
-        self.dives_entry.grid(row=2, column=1, padx=5, pady=5)
-        
-        ttk.Label(self, text="Total Dive Time (min):").grid(row=3, column=0, padx=5, pady=5)
-        self.time_entry = ttk.Entry(self)
-        self.time_entry.insert(0, "0")
-        self.time_entry.grid(row=3, column=1, padx=5, pady=5)
-        
-        ttk.Label(self, text="Description:").grid(row=4, column=0, padx=5, pady=5)
+        ttk.Label(self, text="Description:").grid(row=2, column=0, padx=5, pady=5)
         self.desc_entry = ttk.Entry(self)
-        self.desc_entry.grid(row=4, column=1, padx=5, pady=5)
+        self.desc_entry.grid(row=2, column=1, padx=5, pady=5)
         
         self.is_rental = tk.BooleanVar()
-        ttk.Checkbutton(self, text="Rental Gear", variable=self.is_rental).grid(row=5, column=0, columnspan=2, pady=5)
+        ttk.Checkbutton(self, text="Rental Gear", variable=self.is_rental).grid(row=3, column=0, columnspan=2, pady=5)
         
         # Variable fields (shown/hidden based on gear type)
         self.thickness_frame = ttk.Frame(self)
@@ -100,8 +90,8 @@ class GearAdderApp(ttk.Frame):
         common_args = {
             "name": self.name_entry.get(),
             "output_path": str(output_path),
-            "number_of_dives": int(self.dives_entry.get()),
-            "total_dive_time": int(self.time_entry.get()),
+            "number_of_dives": 0,
+            "total_dive_time": 0,
             "description": self.desc_entry.get() or None,
             "is_rental": self.is_rental.get()
         }
@@ -121,6 +111,8 @@ class GearAdderApp(ttk.Frame):
                 AddGear.add_gloves(thickness=thickness, size=size, **common_args)
             elif gear_type == "Boots":
                 AddGear.add_boots(thickness=thickness, size=size, **common_args)
+        
+        self.master.destroy()
 
 if __name__ == "__main__":
     root = tk.Tk()
