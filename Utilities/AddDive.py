@@ -8,7 +8,6 @@ def add_dive(fit_file_path: str,
             output_path: str,
             location_name: str = '',
             location_description: str = '',
-            coordinates: Optional[tuple[float, float]] = None,
             buddy: str = '',
             divemaster: Optional[str] = None,
             group: Optional[set[str]] = None,
@@ -17,7 +16,7 @@ def add_dive(fit_file_path: str,
             end_pressure: int = 0,
             suit: Optional[str] = None,
             weights: float = 0.0,
-            mask: Optional[str] = None, 
+            mask: Optional[str] = None,
             gloves: Optional[str] = None,
             boots: Optional[str] = None,
             bcd: Optional[str] = None,
@@ -30,7 +29,6 @@ def add_dive(fit_file_path: str,
         output_path: Path where to save the pickle file
         location_name: Name of the dive location
         location_description: Description of the dive location
-        coordinates: GPS coordinates of the dive location
         buddy: Name of dive buddy
         divemaster: Name of divemaster
         group: Set of names of other people in dive group
@@ -51,7 +49,6 @@ def add_dive(fit_file_path: str,
     metadata: Dict[str, Any] = {
         'location_name': location_name,
         'location_description': location_description,
-        'coordinates': coordinates,
         'buddy': buddy,
         'divemaster': divemaster,
         'group': group or set(),
@@ -80,7 +77,8 @@ def add_dive(fit_file_path: str,
     if fins:
         with open(fins, 'rb') as f:
             metadata['fins'] = pickle.load(f)
-            
+
+    print("Parsing dive...")     
     dive = parse_garmin_dive(fit_file_path, metadata)
     
     # Save dive object

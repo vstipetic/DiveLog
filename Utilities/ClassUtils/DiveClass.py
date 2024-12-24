@@ -59,20 +59,16 @@ class DiveBasicInformation:
 
 @dataclass
 class Location:
-    entry: Tuple[float, float]
-
-    """GPS coordinates of the dive entry"""
-
-    exit: Tuple[float, float]
-
-    """GPS coordinates of the dive exit"""
-
     name: str
-
     """Name of the dive spot"""
 
-    description: Optional[str]
+    entry: Optional[Tuple[float, float]] = None
+    """GPS coordinates of the dive entry"""
 
+    exit: Optional[Tuple[float, float]] = None
+    """GPS coordinates of the dive exit"""
+
+    description: Optional[str] = None
     """Description of the dive location"""
 
 

@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 from Utilities.AddDive import add_dive
 
@@ -15,10 +15,26 @@ class DiveAdderApp(ttk.Frame):
         self.fit_path.grid(row=0, column=1, padx=5, pady=5)
         ttk.Button(self, text="Browse", command=self.browse_fit).grid(row=0, column=2, padx=5, pady=5)
         
+        # Output selection frame
+        output_frame = ttk.Frame(self)
+        output_frame.grid(row=1, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
+        
+        # Output folder selection
+        ttk.Label(output_frame, text="Save Location:").grid(row=0, column=0, padx=5, pady=5)
+        self.output_path = ttk.Entry(output_frame)
+        self.output_path.grid(row=0, column=1, padx=5, pady=5)
+        ttk.Button(output_frame, text="Browse", command=self.browse_output).grid(row=0, column=2, padx=5, pady=5)
+        
+        # Output filename
+        ttk.Label(output_frame, text="Save As:").grid(row=1, column=0, padx=5, pady=5)
+        self.output_filename = ttk.Entry(output_frame)
+        self.output_filename.grid(row=1, column=1, padx=5, pady=5)
+        ttk.Label(output_frame, text=".pickle").grid(row=1, column=2, padx=0, pady=5)
+        
         # Gear selection
-        ttk.Label(self, text="Used Gear:").grid(row=1, column=0, padx=5, pady=5)
+        ttk.Label(self, text="Used Gear:").grid(row=2, column=0, padx=5, pady=5)
         self.gear_frame = ttk.Frame(self)
-        self.gear_frame.grid(row=1, column=1, columnspan=2, padx=5, pady=5)
+        self.gear_frame.grid(row=2, column=1, columnspan=2, padx=5, pady=5)
         
         self.gear_paths = {}
         for idx, gear_type in enumerate(["Mask", "Suit", "Gloves", "Boots"]):
@@ -30,8 +46,6 @@ class DiveAdderApp(ttk.Frame):
             self.gear_paths[gear_type] = entry
             
         # Metadata
-        ttk.Label(self, text="Metadata (Optional):").grid(row=2, column=0, columnspan=3, pady=10)
-        
         metadata_frame = ttk.Frame(self)
         metadata_frame.grid(row=3, column=0, columnspan=3, padx=5, pady=5)
         
@@ -47,24 +61,31 @@ class DiveAdderApp(ttk.Frame):
         self.group_entry = ttk.Entry(metadata_frame)
         self.group_entry.grid(row=2, column=1, padx=5, pady=2)
         
-        ttk.Label(metadata_frame, text="Location Name:").grid(row=3, column=0, padx=5, pady=2)
-        self.location_name_entry = ttk.Entry(metadata_frame)
-        self.location_name_entry.grid(row=3, column=1, padx=5, pady=2)
+        # Location frame
+        self.location_frame = ttk.LabelFrame(self, text="Location")
+        self.location_frame.grid(row=4, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
         
-        ttk.Label(metadata_frame, text="Location Description:").grid(row=4, column=0, padx=5, pady=2)
-        self.location_desc_entry = ttk.Entry(metadata_frame)
-        self.location_desc_entry.grid(row=4, column=1, padx=5, pady=2)
+        # Location name
+        ttk.Label(self.location_frame, text="Name:").grid(row=0, column=0, padx=5, pady=2)
+        self.location_name = ttk.Entry(self.location_frame)
+        self.location_name.grid(row=0, column=1, columnspan=2, padx=5, pady=2, sticky="ew")
         
-        # Save location
-        ttk.Label(self, text="Save Location:").grid(row=4, column=0, padx=5, pady=5)
-        self.save_path = ttk.Entry(self)
-        self.save_path.grid(row=4, column=1, padx=5, pady=5)
-        ttk.Button(self, text="Browse", command=self.browse_save).grid(row=4, column=2, padx=5, pady=5)
+        # Description
+        ttk.Label(self.location_frame, text="Description:").grid(row=1, column=0, padx=5, pady=2)
+        self.location_desc = ttk.Entry(self.location_frame)
+        self.location_desc.grid(row=1, column=1, columnspan=2, padx=5, pady=2, sticky="ew")
         
-        ttk.Label(self, text="File Name:").grid(row=5, column=0, padx=5, pady=5)
-        self.filename_entry = ttk.Entry(self)
-        self.filename_entry.grid(row=5, column=1, padx=5, pady=5)
-        ttk.Label(self, text=".pickle").grid(row=5, column=2, padx=5, pady=5)
+        # Gas information frame
+        gas_frame = ttk.LabelFrame(self, text="Gas Information")
+        gas_frame.grid(row=5, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
+
+        ttk.Label(gas_frame, text="Start Pressure (bar):").grid(row=0, column=0, padx=5, pady=2)
+        self.start_pressure = ttk.Entry(gas_frame)
+        self.start_pressure.grid(row=0, column=1, columnspan=2, padx=5, pady=2, sticky="ew")
+
+        ttk.Label(gas_frame, text="End Pressure (bar):").grid(row=1, column=0, padx=5, pady=2)
+        self.end_pressure = ttk.Entry(gas_frame)
+        self.end_pressure.grid(row=1, column=1, columnspan=2, padx=5, pady=2, sticky="ew")
         
         # Save button
         ttk.Button(self, text="Save Dive", command=self.save_dive).grid(row=6, column=0, columnspan=3, pady=20)
@@ -72,46 +93,67 @@ class DiveAdderApp(ttk.Frame):
         self.grid(padx=10, pady=10)
         
     def browse_fit(self):
-        filename = filedialog.askopenfilename(filetypes=[("FIT files", "*.fit")])
+        """Browse for input .fit file"""
+        filename = filedialog.askopenfilename(
+            filetypes=[("FIT files", "*.fit"), ("All files", "*.*")]
+        )
         if filename:
             self.fit_path.delete(0, tk.END)
             self.fit_path.insert(0, filename)
-            
-    def browse_gear(self, gear_type, entry):
-        filename = filedialog.askopenfilename(filetypes=[("Pickle files", "*.pickle")])
+            # Set default output filename based on input file
+            default_name = Path(filename).stem
+            self.output_filename.delete(0, tk.END)
+            self.output_filename.insert(0, default_name)
+
+    def browse_output(self):
+        """Browse for output folder"""
+        folder = filedialog.askdirectory()
+        if folder:
+            self.output_path.delete(0, tk.END)
+            self.output_path.insert(0, folder)
+
+    def browse_gear(self, gear_type: str, entry: ttk.Entry):
+        """Browse for gear pickle files"""
+        filename = filedialog.askopenfilename(
+            filetypes=[("Pickle files", "*.pickle"), ("All files", "*.*")]
+        )
         if filename:
             entry.delete(0, tk.END)
             entry.insert(0, filename)
-            
-    def browse_save(self):
-        folder = filedialog.askdirectory()
-        if folder:
-            self.save_path.delete(0, tk.END)
-            self.save_path.insert(0, folder)
-            
+
     def save_dive(self):
-        if not self.fit_path.get() or not self.filename_entry.get() or not self.save_path.get():
+        if not self.fit_path.get() or not self.output_path.get() or not self.output_filename.get():
+            messagebox.showerror("Error", "Please select input file, output location, and provide a filename")
             return
             
-        output_path = Path(self.save_path.get()) / f"{self.filename_entry.get()}.pickle"
+        # Create output path using the selected directory and custom filename
+        output_path = Path(self.output_path.get()) / f"{self.output_filename.get()}.pickle"
         
-        # Get group as set
-        group = set(g.strip() for g in self.group_entry.get().split(',')) if self.group_entry.get() else None
+        # Check if file already exists
+        if output_path.exists():
+            if not messagebox.askyesno("Warning", "File already exists. Do you want to overwrite it?"):
+                return
         
-        # Create dive using AddDive utility
+        # Parse group names into a set
+        group = set(filter(None, [name.strip() for name in self.group_entry.get().split(',')]))
+        
         add_dive(
             fit_file_path=self.fit_path.get(),
             output_path=str(output_path),
-            location_name=self.location_name_entry.get(),
-            location_description=self.location_desc_entry.get(),
+            location_name=self.location_name.get(),
+            location_description=self.location_desc.get(),
             buddy=self.buddy_entry.get(),
             divemaster=self.divemaster_entry.get() or None,
             group=group,
-            mask=self.gear_paths["Mask"].get() or None,
-            suit=self.gear_paths["Suit"].get() or None,
-            gloves=self.gear_paths["Gloves"].get() or None,
-            boots=self.gear_paths["Boots"].get() or None
+            start_pressure=int(self.start_pressure.get() or 0),
+            end_pressure=int(self.end_pressure.get() or 0),
+            suit=self.gear_paths.get("Suit").get() or None,
+            mask=self.gear_paths.get("Mask").get() or None,
+            gloves=self.gear_paths.get("Gloves").get() or None,
+            boots=self.gear_paths.get("Boots").get() or None
         )
+        
+        self.master.destroy()
 
 if __name__ == "__main__":
     root = tk.Tk()
