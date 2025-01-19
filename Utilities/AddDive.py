@@ -1,7 +1,7 @@
 from Utilities.ClassUtils.DiveClass import Dive
 from Utilities.Parsers.GarminDiveParser import parse_garmin_dive
 import pickle
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pathlib import Path
 
 def add_dive(fit_file_path: str, 
@@ -87,3 +87,36 @@ def add_dive(fit_file_path: str,
         pickle.dump(dive, f)
         
     return dive
+
+def bulk_add_dives(fit_files_dir: str, output_dir: str) -> List[Dive]:
+    """
+    Create multiple Dive objects from all .fit files in a directory
+    
+    Args:
+        fit_files_dir: Directory containing .fit files
+        output_dir: Directory where to save the pickle files
+        
+    Returns:
+        List[Dive]: List of created Dive objects
+    """
+    fit_files_dir = Path(fit_files_dir)
+    output_dir = Path(output_dir)
+    
+    # Ensure output directory exists
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    created_dives = []
+    
+    # Process all .fit files in the directory
+    for fit_file in fit_files_dir.glob("*.fit"):
+        output_path = output_dir / f"{fit_file.stem}.pickle"
+        
+        # Create dive with minimal metadata
+        dive = add_dive(
+            fit_file_path=str(fit_file),
+            output_path=str(output_path)
+        )
+        
+        created_dives.append(dive)
+    
+    return created_dives

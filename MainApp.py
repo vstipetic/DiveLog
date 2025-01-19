@@ -1,7 +1,8 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog, messagebox
 from AddDiveApp import DiveAdderApp
 from AddGearApp import GearAdderApp
+from Utilities.AddDive import bulk_add_dives
 
 class MainApplication(ttk.Frame):
     def __init__(self, master):
@@ -36,6 +37,13 @@ class MainApplication(ttk.Frame):
         
         ttk.Button(
             button_frame,
+            text="Bulk Import Dives",
+            command=self.bulk_import_dives,
+            width=20
+        ).pack(pady=10)
+        
+        ttk.Button(
+            button_frame,
             text="Add New Gear",
             command=self.open_gear_adder,
             width=20
@@ -58,6 +66,7 @@ class MainApplication(ttk.Frame):
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="Add New Dive", command=self.open_dive_adder)
+        file_menu.add_command(label="Bulk Import Dives", command=self.bulk_import_dives)
         file_menu.add_command(label="Add New Gear", command=self.open_gear_adder)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.master.quit)
@@ -111,6 +120,29 @@ class MainApplication(ttk.Frame):
     def populate_gear_stats(self, frame):
         # To be implemented: Add gear statistics
         ttk.Label(frame, text="Gear statistics coming soon...").pack(pady=20)
+    
+    def bulk_import_dives(self):
+        # Ask for input directory
+        input_dir = filedialog.askdirectory(title="Select Directory with .fit Files")
+        if not input_dir:
+            return
+        
+        # Ask for output directory
+        output_dir = filedialog.askdirectory(title="Select Output Directory for Dive Files")
+        if not output_dir:
+            return
+        
+        try:
+            dives = bulk_add_dives(input_dir, output_dir)
+            messagebox.showinfo(
+                "Import Complete", 
+                f"Successfully imported {len(dives)} dives."
+            )
+        except Exception as e:
+            messagebox.showerror(
+                "Import Error",
+                f"Error during bulk import: {str(e)}"
+            )
 
 def main():
     root = tk.Tk()
