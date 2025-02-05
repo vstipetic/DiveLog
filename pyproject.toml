@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "divelog"
+version = "0.1.0"
+description = "Environment for running the divelog"
+authors = ["vstipetic <vedran.stipetic@gmail.com>"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.11"
+fitparse = ">=1.2.0"
+pathlib = ">=1.0.1,<2.0.0"
+attrs = "^25.1.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
