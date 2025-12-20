@@ -1,8 +1,69 @@
 # Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# uv
+.uv/
+uv.lock
+
+# Poetry (if you still have poetry.lock around)
+poetry.lock
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+explorer.ipynb  # or keep if you want to commit it
 
 # VS Code
 .vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
 
-#Pickle files
+# PyCharm
+.idea/
+
+# Storage (your dive data - private)
 Storage/
+
+# Environment variables (API keys)
+.env
+.env.local
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.orig
