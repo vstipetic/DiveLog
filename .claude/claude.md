@@ -4,8 +4,6 @@
 
 DiveLog is a Python-based dive log management application with advanced search and statistics functionality. The main purpose is to extract statistics from dive logs and find interesting trends in diving data. The application parses Garmin dive computer `.fit` files and provides a GUI for managing dives, gear, and analyzing dive statistics.
 
-## Architecture
-
 ### High-Level Architecture
 
 The application follows a modular architecture with clear separation of concerns:
@@ -37,6 +35,21 @@ The application follows a modular architecture with clear separation of concerns
    - `Dives/FitFiles/` - Original .fit files
    - `Gear/` - Gear pickle files
    - `BulkDives/` - Bulk imported dive files
+
+### Import Workflows
+
+**Manual Import** (via `AddDiveApp.py` → `add_dive()`):
+- Single dive with full metadata enrichment
+- Adds data NOT in .fit files: buddy, gear, weight, tank pressures, location details
+- Output: Complete `Dive` object in `Storage/Dives/`
+- Use when: Building comprehensive dive log with context
+
+**Bulk Import** (via `MainApp.py` → `bulk_add_dives()`):
+- Multiple .fit files from directory
+- Parses ONLY .fit file data (timeline, GPS, gas mix, basic stats)
+- NO metadata: People, Gear, Pressures, Location descriptions
+- Output: Minimal `Dive` objects in `Storage/BulkDives/`
+- Use when: Quick statistical analysis of large dive collections without detailed metadata
 
 ## Tech Stack
 

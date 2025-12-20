@@ -99,7 +99,18 @@
 
 **Functions**:
 - `add_dive(fit_file_path: str, output_path: str, ...) -> Dive`
+  - Single dive import with full metadata
+  - Accepts: buddy, divemaster, group, location details, gas pressures, gear references
+  - Creates complete Dive object with enriched metadata
+  
 - `bulk_add_dives(fit_files_dir: str, output_dir: str) -> List[Dive]`
+  - Multiple dive import from directory
+  - Parses ONLY .fit file data (no metadata parameter)
+  - Missing: People, Location details, Gas pressures, Gear associations
+  - Use case: Quick statistical analysis of large dive collections
+
+**Key Difference**: 
+Manual import enriches .fit data with metadata. Bulk import is .fit-only parsing for volume analysis.
 
 **What It Does**:
 - Creates `Dive` objects from .fit files
