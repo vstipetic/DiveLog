@@ -91,11 +91,6 @@ class GearFilterInput(BaseModel):
     gear_name: str = Field(description="Name of gear item")
     gear_type: Optional[str] = Field(None, description="Type: mask, suit, gloves, boots, bcd, fins")
 
-class StatisticsInput(BaseModel):
-    """Request statistics calculation."""
-    stat_type: str = Field(description="Type of statistic: average_depth, total_time, dive_count, etc.")
-    group_by: Optional[str] = Field(None, description="Group by: year, month, location, buddy")
-
 class DurationFilterInput(BaseModel):
     """Filter dives by duration."""
     min_duration_minutes: float = Field(gt=0, description="Minimum duration in minutes")
@@ -108,6 +103,10 @@ class BuddyFilterInput(BaseModel):
 class LocationFilterInput(BaseModel):
     """Filter dives by location."""
     location_name: str = Field(description="Location name (partial match)")
+
+class DepthThresholdInput(BaseModel):
+    """Input for depth threshold calculations."""
+    depth_threshold_meters: float = Field(gt=0, description="Depth threshold in meters")
 ```
 
 #### 2.3 Implement Output Schemas
@@ -160,7 +159,7 @@ class StatisticsResult(BaseModel):
     stat_type: str
     value: float
     unit: str  # "meters", "minutes", "dives", etc.
-    breakdown: Optional[Dict[str, float]] = Field(None, description="Breakdown by group_by parameter")
+    breakdown: Optional[Dict[str, float]] = Field(None, description="For grouped statistics (e.g., by year, month, location)")
 
 class GearSummary(BaseModel):
     """Agent-friendly gear summary."""
@@ -189,6 +188,7 @@ class GearSummary(BaseModel):
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
+from Utilities.Schemas.ToolOutputs import DiveSummary
 
 class DepthProfile(BaseModel):
     """Simplified depth profile for agent responses."""
@@ -220,11 +220,16 @@ class QueryResponse(BaseModel):
 
 **File**: `Utilities/StatisticsFunctions.py`
 
-**Approach**: Functions take attrs Dive objects, return Pydantic results
+**Purpose**: Calculate aggregate statistics on lists of dives. These functions accept filtered dive lists (filtering is handled by FilterFunctions.py) and return calculated statistics.
+
+**Design Philosophy**:
+- Filtering (by year, location, buddy, etc.) → `FilterFunctions.py`
+- Statistics (averages, totals, counts) → `StatisticsFunctions.py`
+- Agent workflow: Filter dives → Calculate statistics on filtered set
+
+**Functions to Implement**:
 ```python
-from typing import List, Dict, Optional
-from datetime import datetime
-from collections import defaultdict
+from typing import List
 from Utilities.ClassUtils.DiveClass import Dive
 from Utilities.Schemas.ToolOutputs import StatisticsResult
 
@@ -237,59 +242,40 @@ def load_all_dives(dive_folder: str = "Storage/Dives") -> List[Dive]:
     Returns:
         List of Dive objects
     """
-    import pickle
-    from pathlib import Path
-    
-    dives = []
-    dive_path = Path(dive_folder)
-    
-    for pickle_file in dive_path.glob("*.pickle"):
-        try:
-            with open(pickle_file, 'rb') as f:
-                dive = pickle.load(f)
-                dives.append(dive)
-        except Exception as e:
-            print(f"Error loading {pickle_file}: {e}")
-    
-    return dives
+    # Implementation: Load all .pickle files from dive_folder
 
 def average_depth(dives: List[Dive]) -> StatisticsResult:
     """Calculate average maximum depth across all dives.
     
     Args:
+        dives: List of Dive objects (pre-filtered if needed)
+        
+    Returns:
+        StatisticsResult with average depth in meters
+    """
+    # Implementation: Average of max(dive.timeline.depths) for each dive
+
+def max_depth(dives: List[Dive]) -> StatisticsResult:
+    """Find maximum depth across all dives.
+    
+    Args:
         dives: List of Dive objects
         
     Returns:
-        StatisticsResult with average depth
+        StatisticsResult with maximum depth in meters
     """
-    if not dives:
-        return StatisticsResult(
-            stat_type="average_depth",
-            value=0.0,
-            unit="meters"
-        )
-    
-    depths = [max(dive.timeline.depths) if dive.timeline.depths else 0.0 for dive in dives]
-    avg = sum(depths) / len(depths)
-    
-    return StatisticsResult(
-        stat_type="average_depth",
-        value=round(avg, 2),
-        unit="meters"
-    )
+    # Implementation: Max of max(dive.timeline.depths) across all dives
 
-def max_depth(dives: List[Dive]) -> StatisticsResult:
-    """Find maximum depth across all dives."""
-    if not dives:
-        return StatisticsResult(stat_type="max_depth", value=0.0, unit="meters")
+def min_depth(dives: List[Dive]) -> StatisticsResult:
+    """Find minimum depth across all dives.
     
-    max_d = max(max(dive.timeline.depths) if dive.timeline.depths else 0.0 for dive in dives)
-    
-    return StatisticsResult(
-        stat_type="max_depth",
-        value=round(max_d, 2),
-        unit="meters"
-    )
+    Args:
+        dives: List of Dive objects
+        
+    Returns:
+        StatisticsResult with minimum depth in meters
+    """
+    # Implementation: Min of max(dive.timeline.depths) across all dives
 
 def total_dive_time(dives: List[Dive]) -> StatisticsResult:
     """Calculate total dive time in minutes.
@@ -300,109 +286,76 @@ def total_dive_time(dives: List[Dive]) -> StatisticsResult:
     Returns:
         StatisticsResult with total time in minutes
     """
-    total_seconds = sum(dive.basics.duration for dive in dives)
-    
-    return StatisticsResult(
-        stat_type="total_dive_time",
-        value=round(total_seconds / 60, 2),
-        unit="minutes"
-    )
+    # Implementation: Sum of dive.basics.duration (convert seconds to minutes)
 
 def dive_count(dives: List[Dive]) -> StatisticsResult:
-    """Count total number of dives."""
-    return StatisticsResult(
-        stat_type="dive_count",
-        value=float(len(dives)),
-        unit="dives"
-    )
+    """Count total number of dives.
+    
+    Args:
+        dives: List of Dive objects
+        
+    Returns:
+        StatisticsResult with count
+    """
+    # Implementation: len(dives)
 
 def average_duration(dives: List[Dive]) -> StatisticsResult:
-    """Calculate average dive duration."""
-    if not dives:
-        return StatisticsResult(stat_type="average_duration", value=0.0, unit="minutes")
+    """Calculate average dive duration.
     
-    avg_seconds = sum(dive.basics.duration for dive in dives) / len(dives)
-    
-    return StatisticsResult(
-        stat_type="average_duration",
-        value=round(avg_seconds / 60, 2),
-        unit="minutes"
-    )
-
-def dives_by_year(dives: List[Dive]) -> StatisticsResult:
-    """Count dives grouped by year.
-    
+    Args:
+        dives: List of Dive objects
+        
     Returns:
-        StatisticsResult with breakdown by year
+        StatisticsResult with average duration in minutes
     """
-    year_counts: Dict[str, float] = defaultdict(float)
-    
-    for dive in dives:
-        year = str(dive.basics.start_time.year)
-        year_counts[year] += 1.0
-    
-    total = sum(year_counts.values())
-    
-    return StatisticsResult(
-        stat_type="dives_by_year",
-        value=total,
-        unit="dives",
-        breakdown=dict(year_counts)
-    )
+    # Implementation: Average of dive.basics.duration (convert to minutes)
 
-def dives_by_month(dives: List[Dive]) -> StatisticsResult:
-    """Count dives grouped by month."""
-    month_counts: Dict[str, float] = defaultdict(float)
+def longest_dive(dives: List[Dive]) -> StatisticsResult:
+    """Find longest dive duration.
     
-    for dive in dives:
-        month_key = f"{dive.basics.start_time.year}-{dive.basics.start_time.month:02d}"
-        month_counts[month_key] += 1.0
-    
-    total = sum(month_counts.values())
-    
-    return StatisticsResult(
-        stat_type="dives_by_month",
-        value=total,
-        unit="dives",
-        breakdown=dict(month_counts)
-    )
+    Args:
+        dives: List of Dive objects
+        
+    Returns:
+        StatisticsResult with longest duration in minutes
+    """
+    # Implementation: Max of dive.basics.duration
 
-def dives_by_location(dives: List[Dive]) -> StatisticsResult:
-    """Count dives grouped by location."""
-    location_counts: Dict[str, float] = defaultdict(float)
+def shortest_dive(dives: List[Dive]) -> StatisticsResult:
+    """Find shortest dive duration.
     
-    for dive in dives:
-        location = dive.location.name if dive.location.name else "Unknown"
-        location_counts[location] += 1.0
-    
-    total = sum(location_counts.values())
-    
-    return StatisticsResult(
-        stat_type="dives_by_location",
-        value=total,
-        unit="dives",
-        breakdown=dict(location_counts)
-    )
+    Args:
+        dives: List of Dive objects
+        
+    Returns:
+        StatisticsResult with shortest duration in minutes
+    """
+    # Implementation: Min of dive.basics.duration
 
-def dives_by_buddy(dives: List[Dive]) -> StatisticsResult:
-    """Count dives grouped by buddy."""
-    buddy_counts: Dict[str, float] = defaultdict(float)
+def deepest_dive(dives: List[Dive]) -> StatisticsResult:
+    """Find deepest dive (same as max_depth but returns full context).
     
-    for dive in dives:
-        buddy = dive.people.buddy if dive.people.buddy else "Solo"
-        buddy_counts[buddy] += 1.0
+    Args:
+        dives: List of Dive objects
+        
+    Returns:
+        StatisticsResult with deepest dive depth in meters
+    """
+    # Implementation: Same as max_depth (kept for semantic clarity)
+
+def shallowest_dive(dives: List[Dive]) -> StatisticsResult:
+    """Find shallowest dive.
     
-    total = sum(buddy_counts.values())
-    
-    return StatisticsResult(
-        stat_type="dives_by_buddy",
-        value=total,
-        unit="dives",
-        breakdown=dict(buddy_counts)
-    )
+    Args:
+        dives: List of Dive objects
+        
+    Returns:
+        StatisticsResult with shallowest dive depth in meters
+    """
+    # Implementation: Min of max(dive.timeline.depths)
 
 def time_below_depth(dives: List[Dive], depth_threshold: float) -> StatisticsResult:
-    """Calculate total time spent below specified depth.
+    """Calculate total time spent below specified depth across all dives.
     
     Args:
         dives: List of Dive objects
@@ -411,41 +364,27 @@ def time_below_depth(dives: List[Dive], depth_threshold: float) -> StatisticsRes
     Returns:
         StatisticsResult with time in minutes
     """
-    total_seconds = 0.0
-    
-    for dive in dives:
-        if not dive.timeline.depths or not dive.timeline.timestamps:
-            continue
-            
-        # Calculate time between each sample
-        for i in range(1, len(dive.timeline.depths)):
-            if dive.timeline.depths[i] > depth_threshold:
-                time_delta = dive.timeline.timestamps[i] - dive.timeline.timestamps[i-1]
-                total_seconds += time_delta
-    
-    return StatisticsResult(
-        stat_type="time_below_depth",
-        value=round(total_seconds / 60, 2),
-        unit="minutes"
-    )
+    # Implementation: Sum time where dive.timeline.depths > threshold
+    # Use timestamps to calculate duration between depth samples
 
-def dives_by_gas_type(dives: List[Dive]) -> StatisticsResult:
-    """Count dives grouped by gas type."""
-    gas_counts: Dict[str, float] = defaultdict(float)
+def average_temperature(dives: List[Dive]) -> StatisticsResult:
+    """Calculate average water temperature across all dives.
     
-    for dive in dives:
-        gas_type = dive.gasses.gas if dive.gasses.gas else "unknown"
-        gas_counts[gas_type] += 1.0
-    
-    total = sum(gas_counts.values())
-    
-    return StatisticsResult(
-        stat_type="dives_by_gas_type",
-        value=total,
-        unit="dives",
-        breakdown=dict(gas_counts)
-    )
+    Args:
+        dives: List of Dive objects
+        
+    Returns:
+        StatisticsResult with average temperature in Celsius
+    """
+    # Implementation: Average of dive.timeline.temperatures values
 ```
+
+**Implementation Notes**:
+- All functions accept `List[Dive]` (attrs objects) as input
+- All functions return `StatisticsResult` (Pydantic) as output
+- Filtering by criteria (year, location, buddy) is NOT done here - agent uses FilterFunctions.py first
+- Handle edge cases: empty lists, missing timeline data, None values
+- Include comprehensive docstrings and type hints
 
 ### Phase 3: Tool System (Priority: High)
 
