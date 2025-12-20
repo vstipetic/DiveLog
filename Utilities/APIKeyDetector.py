@@ -17,7 +17,7 @@ def detect_api_keys() -> Dict[str, str]:
         available_apis['OpenAI'] = openai_key
     
     # Check for Google/Gemini API key
-    gemini_key = os.getenv('GOOGLE_API_KEY')
+    gemini_key = os.getenv('GEMINI_API_KEY')
     if gemini_key:
         available_apis['Gemini'] = gemini_key
         
