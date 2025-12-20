@@ -149,53 +149,68 @@ Base `Gear` class (`Utilities/ClassUtils/GearClasses.py`) contains:
    - Statistics window with AI Query tab (UI only)
 
 4. **Filtering System**
-   - Filter functions: `dive_was_deeper_than`, `dive_was_shallower_than`, `dive_was_longer_than`, `dive_was_shorter_than`, `dive_was_after_date`, `dive_was_before_date`, `dive_was_between_dates`, `dive_was_between_times`, `dive_was_deeper_than_for_duration`
+   - Filter functions: `dive_was_deeper_than`, `dive_was_shallower_than`, `dive_was_longer_than`, `dive_was_shorter_than`, `dive_was_after_date`, `dive_was_before_date`, `dive_was_between_dates`, `dive_was_between_times`, `dive_was_deeper_than_for_duration`, `dive_had_buddy`, `dive_was_at_location`, `dive_used_gas`
    - Filter utility functions in root `DiveFilterer.py`
 
 5. **API Key Detection**
-   - Environment variable scanning for OpenAI and Gemini API keys
+   - Environment variable scanning for OpenAI, Gemini, and Anthropic API keys
+
+6. **Statistics Agent** (`Utilities/StatisticsAgent.py`)
+   - Full LangChain agent implementation
+   - Multi-LLM support (Gemini, OpenAI, Claude)
+   - 10 specialized tools for filtering, statistics, and search
+   - Natural language query processing
+   - Chat history management
+
+7. **Statistics Functions** (`Utilities/StatisticsFunctions.py`)
+   - 18+ statistics functions implemented
+   - Averages, totals, counts, breakdowns by time/location/buddy
+   - All return Pydantic StatisticsResult
+
+8. **Pydantic Schemas** (`Utilities/Schemas/`)
+   - ToolInputs.py - Input validation schemas
+   - ToolOutputs.py - Output result schemas
+   - AgentModels.py - Agent-friendly data models
+
+9. **LangChain Tools** (`Utilities/Tools/`)
+   - FilterTool.py - Dive filtering tools
+   - StatisticsTool.py - Statistics calculation tools
+   - SearchTool.py - Search and listing tools
+
+10. **Streamlit UI** (`streamlit_app.py`)
+    - Modern web interface for AI queries
+    - Chat-based interaction
+    - Quick statistics display
+    - Multi-provider support
 
 ### 🚧 Partially Implemented
 
-1. **Statistics Agent** (`Utilities/StatisticsAgent.py`)
-   - Basic class structure exists
-   - Dive loading functionality implemented
-   - Query processing is a stub (returns debug message only)
-   - No actual LLM integration or tool system
-
-2. **Location Parsing**
+1. **Location Parsing**
    - Entry coordinates extracted from .fit files
    - Exit coordinates not implemented (always None)
 
 ### ❌ Not Implemented
 
-1. **Statistics Functions** (`Utilities/StatisticsFunctions.py`)
-   - File exists but is empty
-
-2. **BCD and Fins Gear Types**
+1. **BCD and Fins Gear Types**
    - Class definitions exist but are stubs
 
-3. **Basic Statistics Display**
+2. **Basic Statistics Display in Tkinter**
    - `populate_dive_stats()` and `populate_gear_stats()` methods are placeholders
+   - (Replaced by Streamlit UI)
 
-4. **Agent System**
-   - No tool system for querying dive data
-   - No LLM integration
-   - No query parsing or execution
-
-5. **Advanced Features**
-   - Trend analysis
-   - Advanced search UI
-   - Statistics calculations
+3. **Advanced Features**
+   - Trend analysis visualizations
+   - Data export functionality
 
 ## File Structure
 
 ```
 DiveLog/
-├── MainApp.py                    # Main GUI application
+├── MainApp.py                    # Main Tkinter GUI application
 ├── AddDiveApp.py                 # Add dive GUI
 ├── AddGearApp.py                 # Add gear GUI
 ├── DiveFilterer.py               # Root-level filter utilities
+├── streamlit_app.py              # Streamlit web UI for AI queries
 ├── explorer.ipynb                # Jupyter notebook (exploration/testing)
 ├── pyproject.toml                # Poetry dependencies
 ├── README.md                     # Project readme
@@ -210,21 +225,30 @@ DiveLog/
 └── Utilities/
     ├── AddDive.py                 # Dive creation logic
     ├── AddGear.py                 # Gear creation logic
-    ├── StatisticsAgent.py        # AI statistics agent (stub)
-    ├── DiveFilterer.py            # Alternative filter implementation
-    ├── FilterFunctions.py        # Filter predicate functions
-    ├── StatisticsFunctions.py    # Statistics functions (empty)
+    ├── StatisticsAgent.py         # LangChain AI agent
+    ├── FilterFunctions.py         # Filter predicate functions
+    ├── StatisticsFunctions.py     # Statistics calculation functions
     ├── APIKeyDetector.py          # API key detection
     ├── ClassUtils/
-    │   ├── DiveClass.py           # Dive data models
-    │   └── GearClasses.py         # Gear data models
-    └── Parsers/
-        └── GarminDiveParser.py    # Garmin .fit parser
+    │   ├── DiveClass.py           # Dive data models (attrs)
+    │   └── GearClasses.py         # Gear data models (attrs)
+    ├── Parsers/
+    │   └── GarminDiveParser.py    # Garmin .fit parser
+    ├── Schemas/                   # Pydantic schemas for agent layer
+    │   ├── __init__.py
+    │   ├── ToolInputs.py          # Input validation schemas
+    │   ├── ToolOutputs.py         # Output result schemas
+    │   └── AgentModels.py         # Agent-friendly data models
+    └── Tools/                     # LangChain tool implementations
+        ├── __init__.py
+        ├── FilterTool.py          # Dive filtering tools
+        ├── StatisticsTool.py      # Statistics calculation tools
+        └── SearchTool.py          # Search and listing tools
 ```
 
-## Query Examples (Future)
+## Query Examples
 
-Once the agent system is implemented, users will be able to ask queries like:
+The agent system supports natural language queries like:
 
 - "What's my average dive depth?"
 - "Show me all dives deeper than 30 meters"
@@ -257,8 +281,14 @@ Once the agent system is implemented, users will be able to ask queries like:
 
 ## Known Issues
 
-1. **Filter Functions Bug**: `FilterFunctions.py` has duplicate `dive_was_longer_than` function definition (lines 11 and 32)
-2. **Attribute Access Bug**: `FilterFunctions.py` uses `dive_data.basic_information.duration` but the actual attribute is `dive_data.basics.duration`
-3. **Duplicate Files**: Both root and `Utilities/` have `DiveFilterer.py` with different implementations
-4. **Import Path Issue**: `Utilities/DiveFilterer.py` uses relative import `from FilterFunctions import *` which may not work correctly
+All major bugs have been fixed:
+
+1. ~~**Filter Functions Bug**~~: ✅ FIXED - Duplicate function removed
+2. ~~**Attribute Access Bug**~~: ✅ FIXED - All `basic_information` changed to `basics`
+3. ~~**Duplicate Files**~~: ✅ FIXED - `Utilities/DiveFilterer.py` removed, root version is canonical
+4. ~~**Import Path Issue**~~: ✅ FIXED - No longer relevant
+
+**Remaining Issues:**
+- Exit coordinates not parsed from .fit files (always None)
+- BCD and Fins gear types are stubs
 

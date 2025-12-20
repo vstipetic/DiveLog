@@ -148,49 +148,41 @@ Manual import enriches .fit data with metadata. Bulk import is .fit-only parsing
 
 **Location**: `Utilities/FilterFunctions.py`
 
-**Functions**:
-- `dive_was_deeper_than(dive_data: Dive, depth: float) -> bool`
-- `dive_was_shallower_than(dive_data: Dive, depth: float) -> bool`
-- `dive_was_longer_than(dive_data: Dive, time: float) -> bool` (duplicate definition - bug)
-- `dive_was_shorter_than(dive_data: Dive, time: float) -> bool`
-- `dive_was_after_date(dive_data: Dive, date: datetime.datetime) -> bool`
-- `dive_was_before_date(dive_data: Dive, date: datetime.datetime) -> bool`
-- `dive_was_between_dates(dive_data: Dive, start_date: datetime.datetime, end_date: datetime.datetime) -> bool`
-- `dive_was_between_times(dive_data: Dive, start_time: datetime.datetime, end_time: datetime.datetime) -> bool`
-- `dive_was_deeper_than_for_duration(dive_data: Dive, depth: float, duration: float) -> bool`
+**Functions** (all accept `Dive`, return `bool`):
+- `dive_was_deeper_than(dive_data, depth)` - Max depth > threshold
+- `dive_was_shallower_than(dive_data, depth)` - Max depth < threshold
+- `dive_was_longer_than(dive_data, time)` - Duration > threshold (seconds)
+- `dive_was_shorter_than(dive_data, time)` - Duration < threshold (seconds)
+- `dive_was_after_date(dive_data, date)` - Dive after date
+- `dive_was_before_date(dive_data, date)` - Dive before date
+- `dive_was_between_dates(dive_data, start_date, end_date)` - Dive in date range
+- `dive_was_between_times(dive_data, start_time, end_time)` - Dive in time range
+- `dive_was_deeper_than_for_duration(dive_data, depth, duration)` - Depth AND duration thresholds
+- `dive_had_buddy(dive_data, buddy_name)` - Buddy name match (case-insensitive)
+- `dive_was_at_location(dive_data, location_name)` - Location match (case-insensitive)
+- `dive_used_gas(dive_data, gas_type)` - Gas type match
 
-**Known Bugs**:
-1. `dive_was_longer_than` is defined twice (lines 11 and 32)
-2. Functions use `dive_data.basic_information.duration` but should use `dive_data.basics.duration`
-3. Functions use `dive_data.basic_information.start_time` but should use `dive_data.basics.start_time`
+**Status**: ✅ All bugs fixed (duplicate function removed, attribute access corrected)
 
-**CAN MODIFY**: Modify these functions to simply and adapt them for agentic use as needed. GUI will adapt to the new function signatures.
+**CAN MODIFY**: Add new filter functions as needed. Wrapped by LangChain tools.
 
 #### Dive Filterer (Root) (`DiveFilterer.py`)
 
 **Location**: `DiveFilterer.py` (root directory)
 
 **Functions**:
-- `get_filter_function(filter_name: str) -> Callable`
-- `filter_dives(dives: List[Dive], filter_names: List[str], filter_params: Dict[str, Any] = None) -> List[Dive]`
+- `get_filter_function(filter_name: str) -> Callable` - Get filter function by name
+- `filter_dives(dives, filter_names, filter_params) -> List[Dive]` - Apply multiple filters
+- `apply_single_filter(dives, filter_name, **kwargs) -> List[Dive]` - Apply single filter
 
-**What It Does**:
-- Maps filter names to filter functions
-- Applies multiple filters to a list of dives
-- Returns filtered dive list
+**Filter Map** (FILTER_MAP constant):
+- 'deeper_than', 'shallower_than', 'longer_than', 'shorter_than'
+- 'after_date', 'before_date', 'between_dates', 'between_times'
+- 'deeper_than_for_duration', 'had_buddy', 'at_location', 'used_gas'
 
-**Filter Map**:
-- 'deeper_than' -> `dive_was_deeper_than`
-- 'shallower_than' -> `dive_was_shallower_than`
-- 'longer_than' -> `dive_was_longer_than`
-- 'shorter_than' -> `dive_was_shorter_than`
-- 'after_date' -> `dive_was_after_date`
-- 'before_date' -> `dive_was_before_date`
-- 'between_dates' -> `dive_was_between_dates`
-- 'between_times' -> `dive_was_between_times`
-- 'deeper_than_for_duration' -> `dive_was_deeper_than_for_duration`
+**Status**: ✅ Canonical implementation. `Utilities/DiveFilterer.py` was removed.
 
-**DO NOT MODIFY**: This is the working filter implementation. The one in `Utilities/` appears to be an older version. Keep this one as canonical.
+**CAN MODIFY**: Add new filter mappings when new filters are added.
 
 ### GUI Applications
 
@@ -247,7 +239,7 @@ Manual import enriches .fit data with metadata. Bulk import is .fit-only parsing
 
 **DO NOT MODIFY**: UI structure is complete. Will be ported to Streamlit.
 
-### Statistics Agent (Stub)
+### Statistics Agent (LangChain-Powered)
 
 #### Statistics Agent (`Utilities/StatisticsAgent.py`)
 
@@ -255,24 +247,129 @@ Manual import enriches .fit data with metadata. Bulk import is .fit-only parsing
 
 **Class**: `StatisticsAgent`
 
-**Current Implementation**:
-- `__init__(api_key: str, dive_folder: str)` - Initializes agent, loads dives
+**Implementation** (Fully functional):
+- `__init__(api_key: str, dive_folder: str, provider: str)` - Initializes agent with LLM
 - `_load_dives()` - Loads all .pickle files from dive folder
-- `process_query(query: str) -> str` - **STUB**: Returns debug message only
+- `_create_llm()` - Creates LLM instance (Gemini, OpenAI, or Claude)
+- `_create_tools()` - Creates LangChain tool instances with dive data
+- `_create_agent()` - Creates LangChain AgentExecutor
+- `process_query(query: str) -> str` - Processes natural language queries
+- `clear_history()` - Clears chat history
+- `reload_dives()` - Reloads dives and recreates tools
+- `get_quick_stats() -> str` - Returns quick summary statistics
 
-**What Works**:
-- Loads dive pickle files from specified folder
-- Stores dives in `self.dives` list
-- Basic structure for query processing
+**Supported LLM Providers**:
+- `gemini` - Google Gemini (gemini-1.5-flash)
+- `openai` - OpenAI (gpt-4o-mini)
+- `claude` - Anthropic Claude (claude-sonnet-4-20250514)
 
-**What's Missing**:
-- No LLM integration
-- No tool system
-- No query parsing
-- No statistics calculations
-- Returns placeholder text only
+**DO NOT MODIFY** core structure. Can extend with new tools or features.
 
-**CAN MODIFY**: The structure is correct, but needs complete implementation. Extend with LangChain, tools, and Pydantic schemas.
+### Pydantic Schemas (`Utilities/Schemas/`)
+
+**Location**: `Utilities/Schemas/`
+
+**Purpose**: Pydantic models for agent layer (separate from attrs-based data models)
+
+#### ToolInputs.py
+Input schemas for LangChain tools:
+- `DepthFilterInput` - Filter by depth range
+- `DateRangeInput` - Filter by date range
+- `GearFilterInput` - Filter by gear used
+- `DurationFilterInput` - Filter by duration
+- `BuddyFilterInput` - Filter by buddy
+- `LocationFilterInput` - Filter by location
+- `DepthThresholdInput` - Depth threshold calculations
+- `StatisticTypeInput` - Select statistic type
+- `SearchQueryInput` - Text search input
+
+#### ToolOutputs.py
+Output schemas for tool results:
+- `DiveSummary` - Agent-friendly dive summary with `from_dive()` converter
+- `FilterResult` - Results from filtering operations
+- `StatisticsResult` - Results from statistics calculations
+- `GearSummary` - Agent-friendly gear summary with `from_gear()` converter
+
+#### AgentModels.py
+Agent-friendly representations:
+- `DepthProfile` - Simplified depth profile with `from_dive()` converter
+- `DiveDetails` - Extended dive information with `from_dive()` converter
+- `QueryResponse` - Standardized response format
+
+**DO NOT MODIFY** without updating dependent tools.
+
+### LangChain Tools (`Utilities/Tools/`)
+
+**Location**: `Utilities/Tools/`
+
+**Purpose**: LangChain BaseTool implementations wrapping FilterFunctions and StatisticsFunctions
+
+#### FilterTool.py
+- `FilterDivesByDepthTool` - Filter dives by depth range
+- `FilterDivesByDateTool` - Filter dives by date range
+- `FilterDivesByDurationTool` - Filter dives by duration
+- `FilterDivesByBuddyTool` - Filter dives by buddy name
+- `FilterDivesByLocationTool` - Filter dives by location name
+
+#### StatisticsTool.py
+- `CalculateStatisticTool` - Calculate various statistics (average_depth, max_depth, dive_count, etc.)
+- `CalculateTimeBelowDepthTool` - Calculate time spent below a depth threshold
+
+#### SearchTool.py
+- `SearchDivesTool` - Search dives by text in location/buddy/description
+- `GetDiveSummaryTool` - Get detailed summary of a specific dive
+- `ListAllDivesTool` - List all dives with sorting options
+
+**CAN MODIFY** to add new tools or improve existing ones.
+
+### Statistics Functions (`Utilities/StatisticsFunctions.py`)
+
+**Location**: `Utilities/StatisticsFunctions.py`
+
+**Functions** (all accept `List[Dive]`, return `StatisticsResult`):
+- `load_all_dives(dive_folder)` - Load all dive pickle files
+- `average_depth(dives)` - Average maximum depth
+- `max_depth(dives)` - Maximum depth across all dives
+- `min_depth(dives)` - Minimum maximum depth
+- `total_dive_time(dives)` - Total dive time in minutes
+- `dive_count(dives)` - Count of dives
+- `average_duration(dives)` - Average dive duration
+- `longest_dive(dives)` - Longest dive duration
+- `shortest_dive(dives)` - Shortest dive duration
+- `deepest_dive(dives)` - Deepest dive (alias for max_depth)
+- `shallowest_dive(dives)` - Shallowest dive (alias for min_depth)
+- `time_below_depth(dives, threshold)` - Time spent below depth threshold
+- `average_temperature(dives)` - Average water temperature
+- `dives_by_year(dives)` - Count grouped by year
+- `dives_by_month(dives)` - Count grouped by month
+- `dives_by_location(dives)` - Count grouped by location
+- `dives_by_buddy(dives)` - Count grouped by buddy
+- `total_air_consumption(dives)` - Total air consumed
+- `average_air_consumption_rate(dives)` - Average consumption rate
+
+**Helper**:
+- `STATISTICS_MAP` - Dictionary mapping stat names to functions
+- `get_statistic(stat_type, dives)` - Get statistic by name
+
+**CAN MODIFY** to add new statistics functions.
+
+### Streamlit App (`streamlit_app.py`)
+
+**Location**: `streamlit_app.py` (root)
+
+**Purpose**: Modern web UI for AI-powered dive statistics queries
+
+**Features**:
+- API key detection and provider selection
+- Chat interface for natural language queries
+- Quick statistics cards
+- Example query buttons
+- Chat history management
+- Dive reload functionality
+
+**Run with**: `streamlit run streamlit_app.py`
+
+**CAN MODIFY** to add new features or improve UI.
 
 ### API Key Detection
 
@@ -328,18 +425,17 @@ Manual import enriches .fit data with metadata. Bulk import is .fit-only parsing
 
 ## Known Limitations
 
-1. **Filter Functions Bugs**:
-   - Attribute access errors (`basic_information` vs `basics`)
-   - Duplicate function definition
-   - Must be fixed before agent implementation
+1. ~~**Filter Functions Bugs**~~: ✅ FIXED
+   - All attribute access errors fixed
+   - Duplicate function removed
 
-2. **Statistics Agent**:
-   - Completely stub implementation
-   - No actual functionality
+2. ~~**Statistics Agent**~~: ✅ IMPLEMENTED
+   - Full LangChain agent with multi-LLM support
+   - 10 tools for filtering, statistics, and search
 
-3. **Statistics Functions**:
-   - File exists but is empty
-   - No statistics calculations implemented
+3. ~~**Statistics Functions**~~: ✅ IMPLEMENTED
+   - 18+ statistics functions implemented
+   - All return Pydantic StatisticsResult
 
 4. **Location Parsing**:
    - Exit coordinates not parsed (always None)
@@ -354,9 +450,8 @@ Manual import enriches .fit data with metadata. Bulk import is .fit-only parsing
    - attrs-based (cannot change to Pydantic without breaking existing files)
 
 7. **Error Handling**:
-   - Minimal error handling throughout
-   - No validation of input data
-   - No recovery from corrupted pickle files
+   - Improved in agent layer
+   - Core data layer has minimal error handling
 
 ## What NOT to Modify
 

@@ -1,16 +1,39 @@
 [tool.poetry]
 name = "divelog"
-version = "0.1.0"
-description = "Environment for running the divelog"
+version = "0.2.0"
+description = "Dive log management with AI-powered statistics analysis"
 authors = ["vstipetic <vedran.stipetic@gmail.com>"]
 package-mode = false
 
 [tool.poetry.dependencies]
 python = ">=3.11"
+
+# Core dependencies
 fitparse = ">=1.2.0"
-pathlib = ">=1.0.1,<2.0.0"
 attrs = "^25.1.0"
+
+# Pydantic for schema validation
+pydantic = "^2.0.0"
+
+# LangChain and LLM providers
+langchain = "^0.3.0"
+langchain-core = "^0.3.0"
+langchain-google-genai = "^2.0.0"
+langchain-openai = "^0.2.0"
+langchain-anthropic = "^0.3.0"
+
+# Streamlit for UI
+streamlit = "^1.40.0"
+
+# Legacy - keeping for backward compatibility with existing code
 google-generativeai = "^0.8.4"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-cov = "^4.0.0"
+
+[tool.poetry.extras]
+visualization = ["matplotlib", "plotly"]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
