@@ -8,7 +8,7 @@ LangChain-compatible interfaces with Pydantic validation.
 from typing import List, Optional, Type
 from datetime import datetime
 from langchain_core.tools import BaseTool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from Utilities.ClassUtils.DiveClass import Dive
 from Utilities.Schemas.ToolOutputs import FilterResult, DiveSummary
@@ -38,6 +38,8 @@ class FilterDivesByDepthInput(BaseModel):
 
 class FilterDivesByDepthTool(BaseTool):
     """Filter dives by depth range."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str = "filter_dives_by_depth"
     description: str = (
@@ -143,6 +145,8 @@ class FilterDivesByDateInput(BaseModel):
 
 class FilterDivesByDateTool(BaseTool):
     """Filter dives by date range."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str = "filter_dives_by_date"
     description: str = (
@@ -253,6 +257,8 @@ class FilterDivesByDurationInput(BaseModel):
 class FilterDivesByDurationTool(BaseTool):
     """Filter dives by duration."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     name: str = "filter_dives_by_duration"
     description: str = (
         "Filter dives by duration. Use min_duration_minutes to find dives longer than "
@@ -320,6 +326,8 @@ class FilterDivesByBuddyInput(BaseModel):
 class FilterDivesByBuddyTool(BaseTool):
     """Filter dives by dive buddy."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     name: str = "filter_dives_by_buddy"
     description: str = (
         "Filter dives by dive buddy name. Searches for partial matches "
@@ -371,6 +379,8 @@ class FilterDivesByLocationInput(BaseModel):
 
 class FilterDivesByLocationTool(BaseTool):
     """Filter dives by location."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str = "filter_dives_by_location"
     description: str = (

@@ -7,7 +7,7 @@ interface for calculating various statistics about dives.
 
 from typing import List, Type
 from langchain_core.tools import BaseTool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from Utilities.ClassUtils.DiveClass import Dive
 from Utilities.Schemas.ToolOutputs import StatisticsResult
@@ -31,6 +31,8 @@ class CalculateStatisticInput(BaseModel):
 
 class CalculateStatisticTool(BaseTool):
     """Calculate statistics about dives."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str = "calculate_statistic"
     description: str = (
@@ -79,6 +81,8 @@ class CalculateTimeBelowDepthInput(BaseModel):
 
 class CalculateTimeBelowDepthTool(BaseTool):
     """Calculate time spent below a specific depth."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str = "calculate_time_below_depth"
     description: str = (

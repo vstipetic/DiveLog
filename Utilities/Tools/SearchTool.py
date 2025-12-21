@@ -7,7 +7,7 @@ by location, buddy, or description.
 
 from typing import List, Type
 from langchain_core.tools import BaseTool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from Utilities.ClassUtils.DiveClass import Dive
 from Utilities.Schemas.ToolOutputs import FilterResult, DiveSummary
@@ -26,6 +26,8 @@ class SearchDivesInput(BaseModel):
 
 class SearchDivesTool(BaseTool):
     """Search dives by text in various fields."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str = "search_dives"
     description: str = (
@@ -110,6 +112,8 @@ class GetDiveSummaryInput(BaseModel):
 class GetDiveSummaryTool(BaseTool):
     """Get detailed summary of a specific dive."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     name: str = "get_dive_summary"
     description: str = (
         "Get detailed information about a specific dive by its index. "
@@ -189,6 +193,8 @@ class ListAllDivesInput(BaseModel):
 
 class ListAllDivesTool(BaseTool):
     """List all dives with sorting options."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str = "list_all_dives"
     description: str = (

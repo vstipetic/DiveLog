@@ -24,7 +24,7 @@ def parse_timeline(fit_file: FitFile) -> tuple[DiveTimeline, datetime]:
         if start_time is None:
             start_time = values.get('timestamp')
         
-        depths.append(values.get('depth', 0.0) / 1000.0)  # Convert from mm to meters
+        depths.append(values.get('depth', 0.0))  # Depth is already in meters
         temperatures.append(values.get('temperature', 0))
         n2_loads.append(values.get('tissue_n2_load', 0))
         cns_loads.append(values.get('cns_load', 0))

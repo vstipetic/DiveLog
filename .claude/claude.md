@@ -9,32 +9,43 @@ DiveLog is a Python-based dive log management application with advanced search a
 The application follows a modular architecture with clear separation of concerns:
 
 1. **GUI Layer** (Root directory)
-   - `MainApp.py` - Main application window with menu and navigation
-   - `AddDiveApp.py` - GUI for adding individual dives
-   - `AddGearApp.py` - GUI for adding gear items
-   - `DiveFilterer.py` - Filter utility (root level, appears to be a duplicate/alternative implementation)
+   - `MainApp.py` - Main Tkinter GUI application window with menu and navigation
+   - `AddDiveApp.py` - Tkinter GUI for adding individual dives
+   - `AddGearApp.py` - Tkinter GUI for adding gear items
+   - `streamlit_app.py` - Modern Streamlit web UI for AI queries and dive import
+   - `DiveFilterer.py` - Filter utility functions
 
 2. **Business Logic Layer** (`Utilities/`)
    - `AddDive.py` - Core dive creation and serialization logic
    - `AddGear.py` - Core gear creation and serialization logic
-   - `StatisticsAgent.py` - AI-powered statistics agent (currently stub implementation)
-   - `DiveFilterer.py` - Dive filtering utilities
+   - `StatisticsAgent.py` - LangChain-based AI statistics agent
    - `FilterFunctions.py` - Individual filter predicate functions
-   - `StatisticsFunctions.py` - Statistics calculation functions (currently empty)
+   - `StatisticsFunctions.py` - Statistics calculation functions
    - `APIKeyDetector.py` - Environment variable detection for LLM API keys
 
-3. **Data Model Layer** (`Utilities/ClassUtils/`)
-   - `DiveClass.py` - Core dive data structures
-   - `GearClasses.py` - Gear data structures
+3. **Data Model Layer** (`Utilities/ClassUtils/`) - **attrs-based**
+   - `DiveClass.py` - Core dive data structures using attrs
+   - `GearClasses.py` - Gear data structures using attrs
 
-4. **Parser Layer** (`Utilities/Parsers/`)
+4. **Agent Schema Layer** (`Utilities/Schemas/`) - **Pydantic-based**
+   - `ToolInputs.py` - Input validation schemas for LangChain tools
+   - `ToolOutputs.py` - Output result schemas (FilterResult, StatisticsResult, DiveSummary)
+   - `AgentModels.py` - Agent-friendly data models
+
+5. **Agent Tools Layer** (`Utilities/Tools/`) - **LangChain + Pydantic**
+   - `FilterTool.py` - Dive filtering tools (depth, date, duration, buddy, location)
+   - `StatisticsTool.py` - Statistics calculation tools
+   - `SearchTool.py` - Search and listing tools
+
+6. **Parser Layer** (`Utilities/Parsers/`)
    - `GarminDiveParser.py` - Garmin .fit file parser
 
-5. **Storage Layer** (`Storage/`)
-   - `Dives/` - Individual dive pickle files
-   - `Dives/FitFiles/` - Original .fit files
+7. **Storage Layer** (`Storage/`)
+   - `Dives/` - Individual dive pickle files with full metadata
+   - `Dives/FitFiles/` - Original .fit files for manual imports
    - `Gear/` - Gear pickle files
-   - `BulkDives/` - Bulk imported dive files
+   - `BulkDives/` - Bulk imported dive files (minimal metadata)
+   - `BulkDives/FitFiles/` - Original .fit files for bulk imports
 
 ### Import Workflows
 
@@ -56,14 +67,67 @@ The application follows a modular architecture with clear separation of concerns
 ### Core Dependencies
 - **Python**: >=3.11
 - **fitparse**: >=1.2.0 - For parsing Garmin .fit files
-- **attrs**: ^25.1.0 - For dataclass definitions
-- **google-generativeai**: ^0.8.4 - For AI/LLM integration
+- **attrs**: ^25.1.0 - For data model definitions (storage layer)
+- **pydantic**: ^2.x - For agent schema validation (LangChain tools)
+- **langchain**: For AI agent framework
+- **langchain-google-genai**: Google Gemini LLM integration
+- **langchain-openai**: OpenAI GPT integration
+- **langchain-anthropic**: Anthropic Claude integration
+- **streamlit**: Modern web UI framework
 - **tkinter** - Built-in GUI framework (Python standard library)
-- **pathlib** - Path handling (Python standard library)
 - **pickle** - Serialization format (Python standard library)
 
 ### Build System
-- **Poetry** - Dependency management and packaging
+- **uv** - Fast Python package installer and resolver
+
+### Dual-Library Data Model Strategy
+
+The project uses two different libraries for data modeling, each optimized for its use case:
+
+#### attrs (Storage Layer)
+- Used in: `Utilities/ClassUtils/DiveClass.py`, `Utilities/ClassUtils/GearClasses.py`
+- Purpose: Define core data structures for dives and gear
+- Serialization: Python pickle for persistence
+- Rationale: Lightweight, fast, minimal boilerplate for simple data containers
+
+```python
+from attr import dataclass
+
+@dataclass
+class Dive:
+    people: People
+    basics: DiveBasicInformation
+    timeline: DiveTimeline
+    # ... stored as pickle files
+```
+
+#### Pydantic (Agent Layer)
+- Used in: `Utilities/Schemas/`, `Utilities/Tools/`
+- Purpose: Input/output validation for LangChain tools
+- Rationale: Required by LangChain for tool argument schemas; provides runtime validation
+
+```python
+from pydantic import BaseModel, Field
+
+class FilterDivesByDepthInput(BaseModel):
+    min_depth: float = Field(description="Minimum depth in meters")
+    max_depth: Optional[float] = Field(None, description="Maximum depth")
+```
+
+#### Bridging attrs and Pydantic
+
+LangChain tools that hold attrs objects (like `List[Dive]`) must configure Pydantic to accept arbitrary types:
+
+```python
+from pydantic import ConfigDict
+
+class FilterDivesByDepthTool(BaseTool):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    dives: List[Dive] = Field(default_factory=list)  # attrs objects
+```
+
+Without `arbitrary_types_allowed=True`, Pydantic silently ignores attrs objects during initialization, resulting in empty lists.
 
 ## Data Models
 
@@ -130,7 +194,7 @@ Base `Gear` class (`Utilities/ClassUtils/GearClasses.py`) contains:
 
 1. **Dive Parsing**
    - Garmin .fit file parsing (`Utilities/Parsers/GarminDiveParser.py`)
-   - Timeline extraction (depths, temperatures, N2/CNS loads)
+   - Timeline extraction (depths in meters, temperatures, N2/CNS loads)
    - Basic information extraction (duration, start/end times)
    - Location parsing (name, entry coordinates from GPS)
    - Gas type detection (air/nitrox/trimix)
@@ -141,47 +205,53 @@ Base `Gear` class (`Utilities/ClassUtils/GearClasses.py`) contains:
    - Gear serialization/deserialization
    - Gear selection in dive creation
 
-3. **GUI Applications**
+3. **Tkinter GUI Applications**
    - Main application window with menu
    - Add Dive GUI with all metadata fields
    - Add Gear GUI with type-specific fields
    - Bulk import functionality
-   - Statistics window with AI Query tab (UI only)
 
-4. **Filtering System**
+4. **Streamlit Web UI** (`streamlit_app.py`)
+   - **AI Chat Tab**: Natural language queries with LLM-powered responses
+   - **Import Dives Tab**: Complete dive import functionality
+     - Storage folder selection (default: `Storage/BulkDives`)
+     - Single dive import with full metadata form (buddy, location, pressures, gear)
+     - Bulk import with progress bar and error handling
+     - Gear selection dropdowns (loaded from `Storage/Gear/`)
+     - Refresh functionality to reload dives into agent
+   - Quick statistics display (total dives, time, avg/max depth)
+   - Multi-provider support (Gemini, OpenAI, Claude)
+   - Example query buttons
+
+5. **Filtering System**
    - Filter functions: `dive_was_deeper_than`, `dive_was_shallower_than`, `dive_was_longer_than`, `dive_was_shorter_than`, `dive_was_after_date`, `dive_was_before_date`, `dive_was_between_dates`, `dive_was_between_times`, `dive_was_deeper_than_for_duration`, `dive_had_buddy`, `dive_was_at_location`, `dive_used_gas`
    - Filter utility functions in root `DiveFilterer.py`
 
-5. **API Key Detection**
+6. **API Key Detection**
    - Environment variable scanning for OpenAI, Gemini, and Anthropic API keys
 
-6. **Statistics Agent** (`Utilities/StatisticsAgent.py`)
+7. **Statistics Agent** (`Utilities/StatisticsAgent.py`)
    - Full LangChain agent implementation
    - Multi-LLM support (Gemini, OpenAI, Claude)
    - 10 specialized tools for filtering, statistics, and search
    - Natural language query processing
    - Chat history management
 
-7. **Statistics Functions** (`Utilities/StatisticsFunctions.py`)
+8. **Statistics Functions** (`Utilities/StatisticsFunctions.py`)
    - 18+ statistics functions implemented
    - Averages, totals, counts, breakdowns by time/location/buddy
    - All return Pydantic StatisticsResult
 
-8. **Pydantic Schemas** (`Utilities/Schemas/`)
+9. **Pydantic Schemas** (`Utilities/Schemas/`)
    - ToolInputs.py - Input validation schemas
-   - ToolOutputs.py - Output result schemas
+   - ToolOutputs.py - Output result schemas (FilterResult, StatisticsResult, DiveSummary)
    - AgentModels.py - Agent-friendly data models
 
-9. **LangChain Tools** (`Utilities/Tools/`)
-   - FilterTool.py - Dive filtering tools
-   - StatisticsTool.py - Statistics calculation tools
-   - SearchTool.py - Search and listing tools
-
-10. **Streamlit UI** (`streamlit_app.py`)
-    - Modern web interface for AI queries
-    - Chat-based interaction
-    - Quick statistics display
-    - Multi-provider support
+10. **LangChain Tools** (`Utilities/Tools/`)
+    - FilterTool.py - 5 filtering tools (depth, date, duration, buddy, location)
+    - StatisticsTool.py - 2 statistics tools (calculate_statistic, time_below_depth)
+    - SearchTool.py - 3 search tools (search_dives, get_dive_summary, list_all_dives)
+    - All tools use `ConfigDict(arbitrary_types_allowed=True)` for attrs compatibility
 
 ### 🚧 Partially Implemented
 
@@ -207,43 +277,45 @@ Base `Gear` class (`Utilities/ClassUtils/GearClasses.py`) contains:
 ```
 DiveLog/
 ├── MainApp.py                    # Main Tkinter GUI application
-├── AddDiveApp.py                 # Add dive GUI
-├── AddGearApp.py                 # Add gear GUI
+├── AddDiveApp.py                 # Add dive Tkinter GUI
+├── AddGearApp.py                 # Add gear Tkinter GUI
 ├── DiveFilterer.py               # Root-level filter utilities
-├── streamlit_app.py              # Streamlit web UI for AI queries
+├── streamlit_app.py              # Streamlit web UI (AI Chat + Import Dives tabs)
 ├── explorer.ipynb                # Jupyter notebook (exploration/testing)
-├── pyproject.toml                # Poetry dependencies
+├── pyproject.toml                # uv/pip dependencies
+├── uv.lock                       # uv lock file
 ├── README.md                     # Project readme
 ├── Storage/
-│   ├── Dives/                    # Individual dive pickle files
-│   │   ├── *.pickle              # Dive objects
+│   ├── Dives/                    # Individual dive pickle files (with metadata)
+│   │   ├── *.pickle              # Dive objects (attrs-based)
 │   │   └── FitFiles/             # Original .fit files
 │   ├── Gear/                     # Gear pickle files
-│   │   └── *.pickle              # Gear objects
-│   └── BulkDives/                # Bulk imported dives
-│       └── *.pickle
+│   │   └── *.pickle              # Gear objects (attrs-based)
+│   └── BulkDives/                # Bulk imported dives (minimal metadata)
+│       ├── *.pickle              # Dive objects (attrs-based)
+│       └── FitFiles/             # Original .fit files
 └── Utilities/
-    ├── AddDive.py                 # Dive creation logic
+    ├── AddDive.py                 # Dive creation logic (add_dive, bulk_add_dives)
     ├── AddGear.py                 # Gear creation logic
-    ├── StatisticsAgent.py         # LangChain AI agent
-    ├── FilterFunctions.py         # Filter predicate functions
-    ├── StatisticsFunctions.py     # Statistics calculation functions
-    ├── APIKeyDetector.py          # API key detection
-    ├── ClassUtils/
-    │   ├── DiveClass.py           # Dive data models (attrs)
-    │   └── GearClasses.py         # Gear data models (attrs)
+    ├── StatisticsAgent.py         # LangChain AI agent (multi-LLM support)
+    ├── FilterFunctions.py         # Filter predicate functions (12 functions)
+    ├── StatisticsFunctions.py     # Statistics calculation functions (18+ functions)
+    ├── APIKeyDetector.py          # API key detection (OpenAI, Gemini, Anthropic)
+    ├── ClassUtils/                # Data models (attrs-based, for storage)
+    │   ├── DiveClass.py           # Dive, DiveTimeline, People, Location, etc.
+    │   └── GearClasses.py         # Gear, Mask, Suit, Gloves, Boots, BCD, Fins
     ├── Parsers/
-    │   └── GarminDiveParser.py    # Garmin .fit parser
-    ├── Schemas/                   # Pydantic schemas for agent layer
+    │   └── GarminDiveParser.py    # Garmin .fit parser (depths in meters)
+    ├── Schemas/                   # Agent schemas (Pydantic-based, for LangChain)
     │   ├── __init__.py
     │   ├── ToolInputs.py          # Input validation schemas
-    │   ├── ToolOutputs.py         # Output result schemas
+    │   ├── ToolOutputs.py         # FilterResult, StatisticsResult, DiveSummary
     │   └── AgentModels.py         # Agent-friendly data models
-    └── Tools/                     # LangChain tool implementations
+    └── Tools/                     # LangChain tools (Pydantic + attrs bridge)
         ├── __init__.py
-        ├── FilterTool.py          # Dive filtering tools
-        ├── StatisticsTool.py      # Statistics calculation tools
-        └── SearchTool.py          # Search and listing tools
+        ├── FilterTool.py          # 5 filtering tools (uses ConfigDict)
+        ├── StatisticsTool.py      # 2 statistics tools (uses ConfigDict)
+        └── SearchTool.py          # 3 search tools (uses ConfigDict)
 ```
 
 ## Query Examples
@@ -261,23 +333,20 @@ The agent system supports natural language queries like:
 
 ## Implementation Priorities
 
-1. **High Priority**
-   - Complete StatisticsAgent with tool system
-   - Implement LLM integration (OpenAI/Gemini)
-   - Create query parsing and execution engine
-   - Implement basic statistics functions
+1. **High Priority** (Core functionality gaps)
+   - Complete BCD and Fins gear types (currently stubs)
+   - Implement exit coordinate parsing from .fit files
 
-2. **Medium Priority**
-   - Complete BCD and Fins gear types
-   - Implement exit coordinate parsing
-   - Add populate_dive_stats() and populate_gear_stats() implementations
-   - Error handling and validation
+2. **Medium Priority** (Enhanced features)
+   - Add populate_dive_stats() and populate_gear_stats() in Tkinter UI
+   - Additional statistics functions (SAC rate analysis, temperature trends)
+   - Gear usage statistics and tracking
 
-3. **Low Priority**
-   - Advanced trend analysis
-   - Export functionality
-   - Data visualization
+3. **Low Priority** (Future enhancements)
+   - Advanced trend analysis and visualizations
+   - Export functionality (CSV, PDF reports)
    - Multi-format support (beyond Garmin)
+   - Mobile-responsive Streamlit UI improvements
 
 ## Known Issues
 
@@ -287,6 +356,8 @@ All major bugs have been fixed:
 2. ~~**Attribute Access Bug**~~: ✅ FIXED - All `basic_information` changed to `basics`
 3. ~~**Duplicate Files**~~: ✅ FIXED - `Utilities/DiveFilterer.py` removed, root version is canonical
 4. ~~**Import Path Issue**~~: ✅ FIXED - No longer relevant
+5. ~~**Depth Parsing Bug**~~: ✅ FIXED - Garmin .fit files provide depth in meters, not millimeters. Removed erroneous `/1000.0` division in `GarminDiveParser.py`
+6. ~~**Pydantic/attrs Incompatibility**~~: ✅ FIXED - Added `model_config = ConfigDict(arbitrary_types_allowed=True)` to all LangChain tools to allow attrs-based `Dive` objects
 
 **Remaining Issues:**
 - Exit coordinates not parsed from .fit files (always None)
