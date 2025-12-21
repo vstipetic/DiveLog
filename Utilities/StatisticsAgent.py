@@ -6,7 +6,7 @@ questions about dive statistics using a set of specialized tools.
 
 Supported LLM providers:
 - Gemini (Google)
-- OpenAI (GPT-4)
+- OpenAI (GPT-5)
 - Anthropic (Claude)
 """
 
@@ -145,7 +145,7 @@ class StatisticsAgent:
             try:
                 from langchain_google_genai import ChatGoogleGenerativeAI
                 return ChatGoogleGenerativeAI(
-                    model="gemini-1.5-flash",
+                    model="gemini-2.5-flash",
                     google_api_key=self.api_key,
                     temperature=0,
                     convert_system_message_to_human=True
@@ -160,7 +160,7 @@ class StatisticsAgent:
             try:
                 from langchain_openai import ChatOpenAI
                 return ChatOpenAI(
-                    model="gpt-4o-mini",
+                    model="gpt-5-mini",
                     api_key=self.api_key,
                     temperature=0
                 )
