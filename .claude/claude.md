@@ -285,7 +285,28 @@ Base `Gear` class (`Utilities/ClassUtils/GearClasses.py`) contains:
     - FilterTool.py - 5 filtering tools (depth, date, duration, buddy, location)
     - StatisticsTool.py - 2 statistics tools (calculate_statistic, time_below_depth)
     - SearchTool.py - 3 search tools (search_dives, get_dive_summary, list_all_dives)
+    - ToolState.py - Shared state for tool chaining (filter → statistics)
     - All tools use `ConfigDict(arbitrary_types_allowed=True)` for attrs compatibility
+
+### Tool Chaining via ToolState
+
+Filter tools and statistics tools are connected via `ToolState`, a shared state mechanism:
+
+1. **Filter tools** (e.g., `filter_dives_by_date`) store their filtered results in `ToolState`
+2. **Statistics tools** (e.g., `calculate_statistic`) check `ToolState` first:
+   - If filtered dives exist → calculate on filtered subset
+   - Otherwise → calculate on all dives
+3. **StatisticsAgent** clears `ToolState` at the start of each new query
+
+Example flow for "How many dives in 2024?":
+```
+1. Agent calls: filter_dives_by_date("2024-01-01", "2024-12-31")
+   → Stores 9 filtered dives in ToolState
+2. Agent calls: calculate_statistic("dive_count")
+   → Reads from ToolState, returns "Dive Count: 9 dives"
+```
+
+Without this mechanism, statistics would incorrectly operate on ALL dives instead of filtered subsets.
 
 ### 🚧 Partially Implemented
 
@@ -349,7 +370,8 @@ DiveLog/
         ├── __init__.py
         ├── FilterTool.py          # 5 filtering tools (uses ConfigDict)
         ├── StatisticsTool.py      # 2 statistics tools (uses ConfigDict)
-        └── SearchTool.py          # 3 search tools (uses ConfigDict)
+        ├── SearchTool.py          # 3 search tools (uses ConfigDict)
+        └── ToolState.py           # Shared state for filter→statistics chaining
 ```
 
 ## Query Examples
@@ -392,6 +414,7 @@ All major bugs have been fixed:
 4. ~~**Import Path Issue**~~: ✅ FIXED - No longer relevant
 5. ~~**Depth Parsing Bug**~~: ✅ FIXED - Garmin .fit files provide depth in meters, not millimeters. Removed erroneous `/1000.0` division in `GarminDiveParser.py`
 6. ~~**Pydantic/attrs Incompatibility**~~: ✅ FIXED - Added `model_config = ConfigDict(arbitrary_types_allowed=True)` to all LangChain tools to allow attrs-based `Dive` objects
+7. ~~**Statistics Tool Chaining Bug**~~: ✅ FIXED - Statistics tools now use filtered dives from ToolState when a filter was applied. Previously, `calculate_statistic` always operated on ALL dives, ignoring any prior filtering (e.g., "How many dives in 2024?" would return total count instead of 2024 count).
 
 **Remaining Issues:**
 - Exit coordinates not parsed from .fit files (always None)
