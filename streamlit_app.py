@@ -13,11 +13,12 @@ import pickle
 import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Any
+from datetime import datetime
 
 from Utilities.StatisticsAgent import StatisticsAgent
 from Utilities.APIKeyDetector import detect_api_keys
-from Utilities.Parsers.GarminDiveParser import parse_garmin_dive
-from Utilities.AddDive import add_dive, bulk_add_dives
+from Utilities.Parsers.GarminDiveParser import parse_garmin_dive, get_fit_file_metadata
+from Utilities.AddDive import add_dive, bulk_add_dives, preview_fit_file
 from Utilities.ClassUtils.GearClasses import Gear, Mask, Suit, Gloves, Boots, BCD, Fins
 
 
@@ -51,6 +52,20 @@ st.markdown("""
     }
     .example-query:hover {
         background-color: #d1d5db;
+    }
+    .auto-extracted {
+        background-color: #d1fae5;
+        padding: 0.5rem;
+        border-radius: 0.25rem;
+        border-left: 3px solid #10b981;
+        margin-bottom: 0.5rem;
+    }
+    .manual-input {
+        background-color: #fef3c7;
+        padding: 0.5rem;
+        border-radius: 0.25rem;
+        border-left: 3px solid #f59e0b;
+        margin-bottom: 0.5rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -87,6 +102,8 @@ def init_session_state():
         st.session_state.import_mode = "Single Dive"
     if "import_messages" not in st.session_state:
         st.session_state.import_messages = []
+    if "fit_preview" not in st.session_state:
+        st.session_state.fit_preview = None
 
 
 def create_agent(api_key: str, provider: str, dive_folder: str = None) -> StatisticsAgent:
@@ -157,6 +174,33 @@ def refresh_agent():
     """Refresh the agent with current storage folder."""
     st.session_state.agent = None
     st.cache_resource.clear()
+
+
+def format_duration(seconds: float) -> str:
+    """Format duration in seconds to mm:ss or hh:mm:ss."""
+    if seconds is None:
+        return "N/A"
+    minutes = int(seconds // 60)
+    secs = int(seconds % 60)
+    if minutes >= 60:
+        hours = minutes // 60
+        minutes = minutes % 60
+        return f"{hours}h {minutes}m {secs}s"
+    return f"{minutes}m {secs}s"
+
+
+def format_surface_interval(seconds: float) -> str:
+    """Format surface interval to human readable."""
+    if seconds is None:
+        return "N/A"
+    hours = seconds / 3600
+    if hours >= 24:
+        days = hours / 24
+        return f"{days:.1f} days"
+    elif hours >= 1:
+        return f"{hours:.1f} hours"
+    else:
+        return f"{seconds/60:.0f} minutes"
 
 
 def render_import_tab():
@@ -251,9 +295,69 @@ def render_single_dive_import():
 
     if uploaded_file is None:
         st.info("Upload a .fit file to begin importing a dive.")
+        st.session_state.fit_preview = None
         return
 
     st.success(f"File loaded: {uploaded_file.name}")
+
+    # Save to temp and get preview
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".fit") as tmp_file:
+        tmp_file.write(uploaded_file.getvalue())
+        tmp_file_path = tmp_file.name
+
+    # Get auto-extracted preview
+    try:
+        preview = get_fit_file_metadata(tmp_file_path)
+        auto_data = preview['auto_extracted']
+        st.session_state.fit_preview = preview
+    except Exception as e:
+        st.error(f"Failed to parse .fit file: {e}")
+        os.unlink(tmp_file_path)
+        return
+
+    # Show auto-extracted data
+    st.subheader("Auto-Extracted Data")
+    st.markdown('<div class="auto-extracted">', unsafe_allow_html=True)
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Dive #", auto_data.get('dive_number', 'N/A'))
+    with col2:
+        st.metric("Max Depth", f"{auto_data.get('max_depth', 0):.1f}m")
+    with col3:
+        st.metric("Duration", format_duration(auto_data.get('duration', 0)))
+    with col4:
+        st.metric("Gas", f"{auto_data.get('gas_type', 'air').title()}")
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        start_time = auto_data.get('start_time')
+        if start_time:
+            st.metric("Date", start_time.strftime("%Y-%m-%d"))
+    with col2:
+        st.metric("Avg Depth", f"{auto_data.get('avg_depth', 0):.1f}m")
+    with col3:
+        st.metric("Water Temp", f"{auto_data.get('avg_temperature', 'N/A')}°C")
+    with col4:
+        st.metric("Water Type", str(auto_data.get('water_type', 'unknown')).title())
+
+    # GPS coordinates if available
+    if auto_data.get('entry_coordinates'):
+        lat, lon = auto_data['entry_coordinates']
+        st.caption(f"📍 GPS: {lat:.6f}, {lon:.6f}")
+
+    # Surface interval
+    if auto_data.get('surface_interval'):
+        st.caption(f"⏱️ Surface interval: {format_surface_interval(auto_data['surface_interval'])}")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Show what still needs manual input
+    st.subheader("Manual Input Required")
+    st.markdown('<div class="manual-input">', unsafe_allow_html=True)
+    st.caption("The following fields are NOT stored in .fit files and require manual entry:")
+    st.caption("• Buddy, divemaster, group • Location description • Tank pressures • Gear/weights")
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # Metadata form
     st.subheader("Dive Metadata")
@@ -275,7 +379,10 @@ def render_single_dive_import():
     with st.expander("Location", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
-            location_name = st.text_input("Location Name", help="Name of the dive site")
+            location_name = st.text_input(
+                "Location Name",
+                help="Name of the dive site (NOT stored in .fit files)"
+            )
         with col2:
             pass  # Placeholder for symmetry
 
@@ -286,6 +393,7 @@ def render_single_dive_import():
 
     # Gas section
     with st.expander("Tank Pressures", expanded=True):
+        st.caption("⚠️ Tank pressures are NOT stored in .fit files - you must enter them manually")
         col1, col2 = st.columns(2)
         with col1:
             start_pressure = st.number_input(
@@ -377,11 +485,6 @@ def render_single_dive_import():
 
     if st.button("Import Dive", type="primary", use_container_width=True):
         try:
-            # Save uploaded file to temp location
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".fit") as tmp_file:
-                tmp_file.write(uploaded_file.getvalue())
-                tmp_file_path = tmp_file.name
-
             # Prepare output path
             storage_path = Path(st.session_state.storage_folder)
             storage_path.mkdir(parents=True, exist_ok=True)
@@ -418,7 +521,8 @@ def render_single_dive_import():
                 gloves=gloves_path,
                 boots=boots_path,
                 bcd=bcd_path,
-                fins=fins_path
+                fins=fins_path,
+                copy_fit_file=True
             )
 
             # Clean up temp file
@@ -453,10 +557,32 @@ def render_bulk_import():
     """Render the bulk import interface."""
     st.subheader("Bulk Import")
 
-    st.info(
-        "Bulk import parses only .fit file data. "
-        "Metadata like buddy, gear, and tank pressures will not be included."
-    )
+    # Info about auto-extraction
+    st.markdown("""
+    <div class="auto-extracted">
+    <strong>✨ Auto-Extracted from .fit Files</strong><br>
+    <ul>
+        <li><strong>GPS coordinates</strong> from session data</li>
+        <li><strong>Gas type</strong> (air/nitrox/trimix) and O2%</li>
+        <li><strong>All timeline data</strong> (depth, temperature, N2/CNS loads)</li>
+        <li><strong>Dive summary</strong> (dive number, surface interval, etc.)</li>
+    </ul>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div class="manual-input">
+    <strong>⚠️ Not Available in .fit Files</strong><br>
+    These fields will be empty after bulk import:
+    <ul>
+        <li><strong>Location name</strong> (NOT stored by Garmin!)</li>
+        <li>Location description</li>
+        <li>Buddy, divemaster, group members</li>
+        <li>Tank pressures (NOT stored by Garmin)</li>
+        <li>Gear and weights</li>
+    </ul>
+    </div>
+    """, unsafe_allow_html=True)
 
     # Folder input for .fit files
     fit_folder = st.text_input(
@@ -480,23 +606,40 @@ def render_bulk_import():
         return
 
     # Find all .fit files
-    fit_files = list(fit_folder_path.glob("*.fit"))
+    fit_files = sorted(fit_folder_path.glob("*.fit"))
 
     if not fit_files:
         st.warning(f"No .fit files found in: {fit_folder}")
         return
 
-    # Display file list
+    # Display file list with preview
     st.success(f"Found {len(fit_files)} .fit files")
 
     with st.expander("Preview files to import", expanded=False):
-        for i, fit_file in enumerate(fit_files[:20]):  # Show first 20
-            st.text(f"{i+1}. {fit_file.name}")
-        if len(fit_files) > 20:
-            st.text(f"... and {len(fit_files) - 20} more")
+        # Show first 10 files with auto-extracted data
+        for i, fit_file in enumerate(fit_files[:10]):
+            try:
+                preview = get_fit_file_metadata(str(fit_file))
+                auto_data = preview['auto_extracted']
+                depth = auto_data.get('max_depth', 0)
+                duration = auto_data.get('duration', 0) / 60
+                gas = auto_data.get('gas_type', 'air')
+                st.text(f"{i+1}. {fit_file.name}")
+                st.caption(f"   → Max depth: {depth:.1f}m, Duration: {duration:.0f}min, Gas: {gas}")
+            except:
+                st.text(f"{i+1}. {fit_file.name}")
+                st.caption(f"   → (preview failed)")
+
+        if len(fit_files) > 10:
+            st.text(f"... and {len(fit_files) - 10} more files")
 
     # Import button
     st.divider()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        copy_fit_files = st.checkbox("Copy .fit files to storage", value=True,
+                                     help="Keep a copy of original .fit files alongside the pickle files")
 
     if st.button("Import All Files", type="primary", use_container_width=True):
         storage_path = Path(st.session_state.storage_folder)
@@ -508,6 +651,7 @@ def render_bulk_import():
         success_count = 0
         error_count = 0
         errors = []
+        gps_extracted = 0
 
         for i, fit_file in enumerate(fit_files):
             progress = (i + 1) / len(fit_files)
@@ -515,13 +659,29 @@ def render_bulk_import():
             status_text.text(f"Processing: {fit_file.name} ({i+1}/{len(fit_files)})")
 
             try:
+                # Get preview for statistics
+                preview = get_fit_file_metadata(str(fit_file))
+                auto_data = preview['auto_extracted']
+
+                if auto_data.get('entry_coordinates'):
+                    gps_extracted += 1
+
                 output_path = storage_path / f"{fit_file.stem}.pickle"
 
-                # Parse dive with minimal metadata
-                dive = add_dive(
-                    fit_file_path=str(fit_file),
-                    output_path=str(output_path)
-                )
+                # Parse dive with auto-extraction
+                dive = parse_garmin_dive(str(fit_file))
+
+                # Save dive
+                with open(output_path, 'wb') as f:
+                    pickle.dump(dive, f)
+
+                # Copy .fit file if requested
+                if copy_fit_files:
+                    fit_files_dest = storage_path / "FitFiles"
+                    fit_files_dest.mkdir(exist_ok=True)
+                    import shutil
+                    shutil.copy2(fit_file, fit_files_dest / fit_file.name)
+
                 success_count += 1
 
             except Exception as e:
@@ -539,6 +699,10 @@ def render_bulk_import():
             st.metric("Successful Imports", success_count)
         with col2:
             st.metric("Failed Imports", error_count)
+
+        # Show extraction statistics
+        st.subheader("Auto-Extraction Summary")
+        st.metric("GPS Coordinates Extracted", f"{gps_extracted}/{success_count}")
 
         if errors:
             with st.expander("Error Details", expanded=True):

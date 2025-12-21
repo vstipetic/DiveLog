@@ -51,16 +51,49 @@ The application follows a modular architecture with clear separation of concerns
 
 **Manual Import** (via `AddDiveApp.py` → `add_dive()`):
 - Single dive with full metadata enrichment
-- Adds data NOT in .fit files: buddy, gear, weight, tank pressures, location details
+- Auto-extracts: GPS coordinates, gas type, all timeline data
+- Manual input for: location name, buddy, gear, weight, tank pressures, location description
 - Output: Complete `Dive` object in `Storage/Dives/`
 - Use when: Building comprehensive dive log with context
 
 **Bulk Import** (via `MainApp.py` → `bulk_add_dives()`):
-- Multiple .fit files from directory
-- Parses ONLY .fit file data (timeline, GPS, gas mix, basic stats)
-- NO metadata: People, Gear, Pressures, Location descriptions
-- Output: Minimal `Dive` objects in `Storage/BulkDives/`
-- Use when: Quick statistical analysis of large dive collections without detailed metadata
+- Multiple .fit files from directory - **fully automated, zero manual input required**
+- Auto-extracts ALL available data from .fit files (see "Auto-Extraction" section below)
+- Empty fields: People, Gear, Pressures, Location descriptions (not in .fit files)
+- Output: `Dive` objects with auto-extracted metadata in `Storage/BulkDives/`
+- Use when: Quick statistical analysis of large dive collections
+
+### .fit File Auto-Extraction
+
+The parser (`GarminDiveParser.py`) extracts extensive data from Garmin .fit files:
+
+**Auto-Extracted (stored in Dive object):**
+- `Location.entry` - GPS coordinates from session data (start_position_lat/long)
+- `Gasses.gas` - Gas type (air/nitrox/trimix) based on O2/He percentages from dive_gas message
+- `DiveTimeline` - All depth, temperature, N2/CNS load data from record messages
+- `DiveBasicInformation` - Duration, start/end times
+
+**Auto-Extracted (available via `get_fit_file_metadata()` but not stored in Dive class):**
+- `dive_number` - Sequential dive number from dive_summary message
+- `avg_depth`, `max_depth` - Pre-computed by dive computer
+- `bottom_time`, `surface_interval` - Time data from dive_summary
+- `water_type` - Salt/fresh water from dive_settings
+- `avg_temperature`, `max_temperature` - Water temperature from session
+- `avg_heart_rate`, `max_heart_rate` - Heart rate data from session
+- `gf_low`, `gf_high` - Gradient factor settings from dive_settings
+- `total_calories` - Calories burned from session
+
+**NOT in .fit files (require manual input):**
+- **Location name** - Not stored in .fit files (filename-based extraction is unreliable)
+- Location description
+- Buddy, divemaster, group members
+- **Tank start/end pressures** - Surprisingly NOT stored by Garmin!
+- Gear selection (suit, mask, gloves, boots, BCD, fins)
+- Weight belt weight
+
+**Helper Functions:**
+- `get_fit_file_metadata(file_path)` - Returns dict with `auto_extracted` and `needs_manual_input` sections
+- `preview_fit_file(file_path)` - Alias for `get_fit_file_metadata()`
 
 ## Tech Stack
 
@@ -215,8 +248,9 @@ Base `Gear` class (`Utilities/ClassUtils/GearClasses.py`) contains:
    - **AI Chat Tab**: Natural language queries with LLM-powered responses
    - **Import Dives Tab**: Complete dive import functionality
      - Storage folder selection (default: `Storage/BulkDives`)
-     - Single dive import with full metadata form (buddy, location, pressures, gear)
-     - Bulk import with progress bar and error handling
+     - **Single dive import**: Shows auto-extracted data preview (depth, duration, gas, GPS, etc.)
+     - **Bulk import**: Fully automated with extraction summary, shows GPS coordinates extracted
+     - Visual indicators for auto-extracted vs manual-input fields
      - Gear selection dropdowns (loaded from `Storage/Gear/`)
      - Refresh functionality to reload dives into agent
    - Quick statistics display (total dives, time, avg/max depth)
