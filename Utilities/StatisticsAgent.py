@@ -161,8 +161,7 @@ class StatisticsAgent:
                 from langchain_openai import ChatOpenAI
                 return ChatOpenAI(
                     model="gpt-5-mini",
-                    api_key=self.api_key,
-                    temperature=0
+                    api_key=self.api_key
                 )
             except ImportError:
                 raise ImportError(
