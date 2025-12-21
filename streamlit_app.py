@@ -843,34 +843,37 @@ def render_example_queries():
 
 def render_chat_interface(agent: StatisticsAgent):
     """Render the main chat interface."""
-    # Display chat history
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    # Chat input
-    if prompt := st.chat_input("Ask about your dives..."):
-        process_query(agent, prompt)
+    # Create a container for chat messages - this ensures proper ordering
+    chat_container = st.container()
+    
+    # Display chat history in the container
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+    
+    # Chat input at the bottom (st.chat_input always renders at bottom)
+    prompt = st.chat_input("Ask about your dives...")
+    
+    # Return the prompt for processing outside this function
+    return prompt
 
 
 def process_query(agent: StatisticsAgent, query: str):
-    """Process a user query and display the response."""
-    # Add user message to chat
+    """Process a user query and update session state. Returns the response."""
+    # Add user message to session state
     st.session_state.messages.append({"role": "user", "content": query})
-    with st.chat_message("user"):
-        st.markdown(query)
 
     # Get agent response
-    with st.chat_message("assistant"):
-        with st.spinner("Analyzing your dives..."):
-            try:
-                response = agent.process_query(query)
-            except Exception as e:
-                response = f"Error: {str(e)}"
-        st.markdown(response)
+    try:
+        response = agent.process_query(query)
+    except Exception as e:
+        response = f"Error: {str(e)}"
 
-    # Add assistant response to chat
+    # Add assistant response to session state
     st.session_state.messages.append({"role": "assistant", "content": response})
+    
+    return response
 
 
 def render_chat_tab(agent: StatisticsAgent):
@@ -890,11 +893,19 @@ def render_chat_tab(agent: StatisticsAgent):
 
     # Main chat interface
     st.subheader("Ask about your dives")
-    render_chat_interface(agent)
-
-    # Process example query if clicked
-    if example_query:
-        process_query(agent, example_query)
+    
+    # Get any new prompt from the chat input
+    chat_prompt = render_chat_interface(agent)
+    
+    # Determine which query to process (chat input takes priority, then example)
+    query_to_process = chat_prompt or example_query
+    
+    # Process the query if we have one
+    if query_to_process:
+        # Show a spinner while processing
+        with st.spinner("Analyzing your dives..."):
+            process_query(agent, query_to_process)
+        # Rerun to display the updated messages properly
         st.rerun()
 
 
