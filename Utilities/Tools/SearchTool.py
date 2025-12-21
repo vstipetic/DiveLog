@@ -3,6 +3,9 @@ LangChain tool for searching dives.
 
 This tool provides text-based search capabilities for finding dives
 by location, buddy, or description.
+
+IMPORTANT: Search tools store their results in ToolState, making
+the found dives available to subsequent statistics tools.
 """
 
 from typing import List, Type
@@ -11,6 +14,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from Utilities.ClassUtils.DiveClass import Dive
 from Utilities.Schemas.ToolOutputs import FilterResult, DiveSummary
+from Utilities.Tools.ToolState import ToolState
 
 
 class SearchDivesInput(BaseModel):
@@ -25,7 +29,11 @@ class SearchDivesInput(BaseModel):
 
 
 class SearchDivesTool(BaseTool):
-    """Search dives by text in various fields."""
+    """Search dives by text in various fields.
+
+    This tool automatically stores search results in ToolState, making
+    them available for subsequent statistics calculations.
+    """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -33,7 +41,8 @@ class SearchDivesTool(BaseTool):
     description: str = (
         "Search dives by text query in location, buddy, or description fields. "
         "Use search_field to specify which field to search. "
-        "The search is case-insensitive and supports partial matches."
+        "The search is case-insensitive and supports partial matches. "
+        "The search results are automatically available for subsequent statistics calculations."
     )
     args_schema: Type[BaseModel] = SearchDivesInput
 
@@ -59,6 +68,9 @@ class SearchDivesTool(BaseTool):
             elif search_field == "description":
                 if dive.location.description and query_lower in dive.location.description.lower():
                     filtered.append(dive)
+
+        # Store search results in shared state for statistics tools
+        ToolState.set_filtered_dives(filtered, f"search '{query}' in {search_field}")
 
         if not filtered:
             return f"No dives found with '{query}' in {search_field} field."

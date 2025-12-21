@@ -35,6 +35,7 @@ from Utilities.Tools.SearchTool import (
     GetDiveSummaryTool,
     ListAllDivesTool,
 )
+from Utilities.Tools.ToolState import ToolState
 
 
 # System prompt for the agent
@@ -180,13 +181,16 @@ class StatisticsAgent:
     def _create_tools(self):
         """Create tool instances with dive data."""
         return [
+            # Filter tools - use dives field, store results in ToolState
             FilterDivesByDepthTool(dives=self.dives),
             FilterDivesByDateTool(dives=self.dives),
             FilterDivesByDurationTool(dives=self.dives),
             FilterDivesByBuddyTool(dives=self.dives),
             FilterDivesByLocationTool(dives=self.dives),
-            CalculateStatisticTool(dives=self.dives),
-            CalculateTimeBelowDepthTool(dives=self.dives),
+            # Statistics tools - use all_dives as fallback, check ToolState first
+            CalculateStatisticTool(all_dives=self.dives),
+            CalculateTimeBelowDepthTool(all_dives=self.dives),
+            # Search tools
             SearchDivesTool(dives=self.dives),
             GetDiveSummaryTool(dives=self.dives),
             ListAllDivesTool(dives=self.dives),
@@ -225,6 +229,9 @@ class StatisticsAgent:
                 "No dives found in the dive log. Please add some dives first "
                 "using the Add Dive feature."
             )
+
+        # Clear any previous filter state from prior queries
+        ToolState.clear()
 
         try:
             result = self.agent_executor.invoke({

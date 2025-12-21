@@ -3,6 +3,9 @@ LangChain tools for filtering dives.
 
 These tools wrap the existing FilterFunctions to provide
 LangChain-compatible interfaces with Pydantic validation.
+
+IMPORTANT: All filter tools store their results in ToolState, making
+the filtered dives available to subsequent statistics tools.
 """
 
 from typing import List, Optional, Type
@@ -12,6 +15,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from Utilities.ClassUtils.DiveClass import Dive
 from Utilities.Schemas.ToolOutputs import FilterResult, DiveSummary
+from Utilities.Tools.ToolState import ToolState
 from Utilities.FilterFunctions import (
     dive_was_deeper_than,
     dive_was_shallower_than,
@@ -45,7 +49,8 @@ class FilterDivesByDepthTool(BaseTool):
     description: str = (
         "Filter dives by depth range. Returns dives where maximum depth is within "
         "the specified range. Use min_depth to find dives deeper than a threshold. "
-        "Optionally use max_depth to limit the upper bound."
+        "Optionally use max_depth to limit the upper bound. "
+        "The filtered results are automatically available for subsequent statistics calculations."
     )
     args_schema: Type[BaseModel] = FilterDivesByDepthInput
 
@@ -62,6 +67,13 @@ class FilterDivesByDepthTool(BaseTool):
 
         if max_depth is not None:
             filtered = [d for d in filtered if dive_was_shallower_than(d, max_depth)]
+
+        # Store filtered dives in shared state for statistics tools
+        if max_depth:
+            filter_desc = f"depth {min_depth}m-{max_depth}m"
+        else:
+            filter_desc = f"depth >{min_depth}m"
+        ToolState.set_filtered_dives(filtered, filter_desc)
 
         # Build result
         result = self._build_filter_result(filtered)
@@ -151,7 +163,8 @@ class FilterDivesByDateTool(BaseTool):
     name: str = "filter_dives_by_date"
     description: str = (
         "Filter dives by date range. Use start_date to find dives after a specific date. "
-        "Optionally use end_date to limit the date range. Dates should be in YYYY-MM-DD format."
+        "Optionally use end_date to limit the date range. Dates should be in YYYY-MM-DD format. "
+        "The filtered results are automatically available for subsequent statistics calculations."
     )
     args_schema: Type[BaseModel] = FilterDivesByDateInput
 
@@ -181,6 +194,13 @@ class FilterDivesByDateTool(BaseTool):
 
         if end_dt:
             filtered = [d for d in filtered if dive_was_before_date(d, end_dt)]
+
+        # Store filtered dives in shared state for statistics tools
+        if end_date:
+            filter_desc = f"date {start_date} to {end_date}"
+        else:
+            filter_desc = f"date after {start_date}"
+        ToolState.set_filtered_dives(filtered, filter_desc)
 
         # Build and format result
         result = self._build_filter_result(filtered)
@@ -262,7 +282,8 @@ class FilterDivesByDurationTool(BaseTool):
     name: str = "filter_dives_by_duration"
     description: str = (
         "Filter dives by duration. Use min_duration_minutes to find dives longer than "
-        "a threshold. Optionally use max_duration_minutes to limit the upper bound."
+        "a threshold. Optionally use max_duration_minutes to limit the upper bound. "
+        "The filtered results are automatically available for subsequent statistics calculations."
     )
     args_schema: Type[BaseModel] = FilterDivesByDurationInput
 
@@ -281,6 +302,13 @@ class FilterDivesByDurationTool(BaseTool):
         if max_duration_minutes is not None:
             max_seconds = max_duration_minutes * 60
             filtered = [d for d in filtered if dive_was_shorter_than(d, max_seconds)]
+
+        # Store filtered dives in shared state for statistics tools
+        if max_duration_minutes:
+            filter_desc = f"duration {min_duration_minutes}-{max_duration_minutes}min"
+        else:
+            filter_desc = f"duration >{min_duration_minutes}min"
+        ToolState.set_filtered_dives(filtered, filter_desc)
 
         if not filtered:
             if max_duration_minutes:
@@ -331,7 +359,8 @@ class FilterDivesByBuddyTool(BaseTool):
     name: str = "filter_dives_by_buddy"
     description: str = (
         "Filter dives by dive buddy name. Searches for partial matches "
-        "(case-insensitive). Use this to find dives with a specific person."
+        "(case-insensitive). Use this to find dives with a specific person. "
+        "The filtered results are automatically available for subsequent statistics calculations."
     )
     args_schema: Type[BaseModel] = FilterDivesByBuddyInput
 
@@ -340,6 +369,9 @@ class FilterDivesByBuddyTool(BaseTool):
     def _run(self, buddy_name: str) -> str:
         """Filter dives by buddy and return formatted result."""
         filtered = [d for d in self.dives if dive_had_buddy(d, buddy_name)]
+
+        # Store filtered dives in shared state for statistics tools
+        ToolState.set_filtered_dives(filtered, f"buddy '{buddy_name}'")
 
         if not filtered:
             return f"No dives found with buddy matching '{buddy_name}'."
@@ -385,7 +417,8 @@ class FilterDivesByLocationTool(BaseTool):
     name: str = "filter_dives_by_location"
     description: str = (
         "Filter dives by location name. Searches for partial matches "
-        "(case-insensitive). Use this to find dives at a specific site."
+        "(case-insensitive). Use this to find dives at a specific site. "
+        "The filtered results are automatically available for subsequent statistics calculations."
     )
     args_schema: Type[BaseModel] = FilterDivesByLocationInput
 
@@ -394,6 +427,9 @@ class FilterDivesByLocationTool(BaseTool):
     def _run(self, location_name: str) -> str:
         """Filter dives by location and return formatted result."""
         filtered = [d for d in self.dives if dive_was_at_location(d, location_name)]
+
+        # Store filtered dives in shared state for statistics tools
+        ToolState.set_filtered_dives(filtered, f"location '{location_name}'")
 
         if not filtered:
             return f"No dives found at location matching '{location_name}'."
