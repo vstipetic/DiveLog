@@ -25,7 +25,12 @@ from Utilities.Tools.FilterTool import (
     FilterDivesByDurationTool,
     FilterDivesByBuddyTool,
     FilterDivesByLocationTool,
+    FilterDivesByStartTimeTool,
+    FilterDivesByTemperatureTool,
+    FilterDivesByCNSLoadTool,
+    FilterDivesByGasTypeTool,
 )
+from Utilities.Tools.DurationAtDepthTool import FilterDivesByDurationAtDepthTool
 from Utilities.Tools.StatisticsTool import (
     CalculateStatisticTool,
     CalculateTimeBelowDepthTool,
@@ -51,8 +56,10 @@ When answering questions about dives:
 5. If you can't find exact information, explain what you can provide
 
 Available capabilities:
-- Filter dives by depth, date, duration, buddy, or location
-- Calculate statistics: averages, totals, counts, breakdowns by time period
+- Filter dives by: depth, date, duration, buddy, location, start time (morning/afternoon),
+  water temperature, CNS oxygen toxicity load, gas type (air/nitrox/trimix),
+  and continuous time at specific depth
+- Calculate statistics: averages, totals, counts, breakdowns by time/location/buddy/gas
 - Search for dives by text in various fields
 - Get detailed information about specific dives
 - List all dives with sorting options
@@ -72,6 +79,11 @@ Examples of questions you can answer:
 - "What's my deepest dive?"
 - "Who is my most common dive buddy?"
 - "List my dives at [location]"
+- "Show me morning dives (before 10am)"
+- "Find dives in water colder than 15 degrees"
+- "Show dives where I spent 5+ minutes at 30m depth"
+- "What's my average CNS load on deep dives?"
+- "How many nitrox dives have I done?"
 """
 
 
@@ -187,6 +199,11 @@ class StatisticsAgent:
             FilterDivesByDurationTool(dives=self.dives),
             FilterDivesByBuddyTool(dives=self.dives),
             FilterDivesByLocationTool(dives=self.dives),
+            FilterDivesByStartTimeTool(dives=self.dives),
+            FilterDivesByTemperatureTool(dives=self.dives),
+            FilterDivesByCNSLoadTool(dives=self.dives),
+            FilterDivesByGasTypeTool(dives=self.dives),
+            FilterDivesByDurationAtDepthTool(dives=self.dives),
             # Statistics tools - use all_dives as fallback, check ToolState first
             CalculateStatisticTool(all_dives=self.dives),
             CalculateTimeBelowDepthTool(all_dives=self.dives),

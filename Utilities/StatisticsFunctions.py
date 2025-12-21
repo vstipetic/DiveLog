@@ -622,6 +622,292 @@ def average_air_consumption_rate(dives: List[Dive]) -> StatisticsResult:
     )
 
 
+def most_common_buddy(dives: List[Dive]) -> StatisticsResult:
+    """Find the most common dive buddy.
+
+    Args:
+        dives: List of Dive objects
+
+    Returns:
+        StatisticsResult with most common buddy name and count
+    """
+    if not dives:
+        return StatisticsResult(
+            stat_type="most_common_buddy",
+            value=0.0,
+            unit="dives",
+            context="No dives to analyze"
+        )
+
+    buddy_counts: Dict[str, int] = defaultdict(int)
+    for dive in dives:
+        buddy = dive.people.buddy or "Solo/Unknown"
+        buddy_counts[buddy] += 1
+
+    if not buddy_counts:
+        return StatisticsResult(
+            stat_type="most_common_buddy",
+            value=0.0,
+            unit="dives",
+            context="No buddy data available"
+        )
+
+    most_common = max(buddy_counts.items(), key=lambda x: x[1])
+    buddy_name, count = most_common
+
+    return StatisticsResult(
+        stat_type="most_common_buddy",
+        value=float(count),
+        unit="dives",
+        context=f"Most common buddy: {buddy_name}",
+        breakdown=dict(sorted(buddy_counts.items(), key=lambda x: x[1], reverse=True))
+    )
+
+
+def most_visited_location(dives: List[Dive]) -> StatisticsResult:
+    """Find the most visited dive location.
+
+    Args:
+        dives: List of Dive objects
+
+    Returns:
+        StatisticsResult with most visited location and count
+    """
+    if not dives:
+        return StatisticsResult(
+            stat_type="most_visited_location",
+            value=0.0,
+            unit="dives",
+            context="No dives to analyze"
+        )
+
+    location_counts: Dict[str, int] = defaultdict(int)
+    for dive in dives:
+        location = dive.location.name or "Unknown"
+        location_counts[location] += 1
+
+    if not location_counts:
+        return StatisticsResult(
+            stat_type="most_visited_location",
+            value=0.0,
+            unit="dives",
+            context="No location data available"
+        )
+
+    most_visited = max(location_counts.items(), key=lambda x: x[1])
+    location_name, count = most_visited
+
+    return StatisticsResult(
+        stat_type="most_visited_location",
+        value=float(count),
+        unit="dives",
+        context=f"Most visited location: {location_name}",
+        breakdown=dict(sorted(location_counts.items(), key=lambda x: x[1], reverse=True))
+    )
+
+
+def average_max_depth_by_year(dives: List[Dive]) -> StatisticsResult:
+    """Calculate average maximum depth grouped by year.
+
+    Args:
+        dives: List of Dive objects
+
+    Returns:
+        StatisticsResult with breakdown of avg depth by year
+    """
+    if not dives:
+        return StatisticsResult(
+            stat_type="average_max_depth_by_year",
+            value=0.0,
+            unit="meters",
+            context="No dives to analyze"
+        )
+
+    year_depths: Dict[str, List[float]] = defaultdict(list)
+    for dive in dives:
+        if dive.timeline.depths:
+            year = str(dive.basics.start_time.year)
+            year_depths[year].append(max(dive.timeline.depths))
+
+    if not year_depths:
+        return StatisticsResult(
+            stat_type="average_max_depth_by_year",
+            value=0.0,
+            unit="meters",
+            context="No depth data available"
+        )
+
+    # Calculate average for each year
+    breakdown = {}
+    for year, depths in sorted(year_depths.items()):
+        breakdown[year] = round(sum(depths) / len(depths), 1)
+
+    # Overall average
+    all_depths = [d for depths in year_depths.values() for d in depths]
+    overall_avg = sum(all_depths) / len(all_depths) if all_depths else 0
+
+    return StatisticsResult(
+        stat_type="average_max_depth_by_year",
+        value=round(overall_avg, 2),
+        unit="meters",
+        breakdown=breakdown,
+        context=f"Yearly depth trends from {min(year_depths.keys())} to {max(year_depths.keys())}"
+    )
+
+
+def total_time_by_location(dives: List[Dive]) -> StatisticsResult:
+    """Calculate total dive time grouped by location.
+
+    Args:
+        dives: List of Dive objects
+
+    Returns:
+        StatisticsResult with breakdown of time by location in minutes
+    """
+    if not dives:
+        return StatisticsResult(
+            stat_type="total_time_by_location",
+            value=0.0,
+            unit="minutes",
+            context="No dives to analyze"
+        )
+
+    location_times: Dict[str, float] = defaultdict(float)
+    for dive in dives:
+        location = dive.location.name or "Unknown"
+        location_times[location] += dive.basics.duration / 60  # Convert to minutes
+
+    # Sort by time (descending)
+    sorted_breakdown = dict(
+        sorted(location_times.items(), key=lambda x: x[1], reverse=True)
+    )
+
+    total_minutes = sum(location_times.values())
+
+    return StatisticsResult(
+        stat_type="total_time_by_location",
+        value=round(total_minutes, 2),
+        unit="minutes",
+        breakdown={k: round(v, 1) for k, v in sorted_breakdown.items()},
+        context=f"Time at {len(location_times)} locations ({total_minutes / 60:.1f} hours total)"
+    )
+
+
+def dives_by_gas_type(dives: List[Dive]) -> StatisticsResult:
+    """Count dives grouped by gas type (air, nitrox, trimix).
+
+    Args:
+        dives: List of Dive objects
+
+    Returns:
+        StatisticsResult with breakdown by gas type
+    """
+    if not dives:
+        return StatisticsResult(
+            stat_type="dives_by_gas_type",
+            value=0.0,
+            unit="dives",
+            context="No dives to analyze"
+        )
+
+    gas_counts: Dict[str, float] = defaultdict(float)
+    for dive in dives:
+        gas_type = dive.gasses.gas or "Unknown"
+        gas_counts[gas_type] += 1
+
+    # Sort by count (descending)
+    sorted_breakdown = dict(
+        sorted(gas_counts.items(), key=lambda x: x[1], reverse=True)
+    )
+
+    return StatisticsResult(
+        stat_type="dives_by_gas_type",
+        value=float(len(dives)),
+        unit="dives",
+        breakdown=sorted_breakdown,
+        context=f"Gas type distribution across {len(dives)} dives"
+    )
+
+
+def average_cns_load(dives: List[Dive]) -> StatisticsResult:
+    """Calculate average maximum CNS oxygen toxicity load.
+
+    Args:
+        dives: List of Dive objects
+
+    Returns:
+        StatisticsResult with average CNS percentage
+    """
+    if not dives:
+        return StatisticsResult(
+            stat_type="average_cns_load",
+            value=0.0,
+            unit="%",
+            context="No dives to analyze"
+        )
+
+    max_cns_values = []
+    for dive in dives:
+        if dive.timeline.cns_load:
+            max_cns_values.append(max(dive.timeline.cns_load))
+
+    if not max_cns_values:
+        return StatisticsResult(
+            stat_type="average_cns_load",
+            value=0.0,
+            unit="%",
+            context="No CNS data available"
+        )
+
+    avg_cns = sum(max_cns_values) / len(max_cns_values)
+    max_cns = max(max_cns_values)
+
+    return StatisticsResult(
+        stat_type="average_cns_load",
+        value=round(avg_cns, 1),
+        unit="%",
+        context=f"Average max CNS across {len(max_cns_values)} dives (highest: {max_cns:.1f}%)"
+    )
+
+
+def max_cns_load(dives: List[Dive]) -> StatisticsResult:
+    """Find the maximum CNS oxygen toxicity load across all dives.
+
+    Args:
+        dives: List of Dive objects
+
+    Returns:
+        StatisticsResult with maximum CNS percentage
+    """
+    if not dives:
+        return StatisticsResult(
+            stat_type="max_cns_load",
+            value=0.0,
+            unit="%",
+            context="No dives to analyze"
+        )
+
+    max_cns_values = []
+    for dive in dives:
+        if dive.timeline.cns_load:
+            max_cns_values.append(max(dive.timeline.cns_load))
+
+    if not max_cns_values:
+        return StatisticsResult(
+            stat_type="max_cns_load",
+            value=0.0,
+            unit="%",
+            context="No CNS data available"
+        )
+
+    return StatisticsResult(
+        stat_type="max_cns_load",
+        value=round(max(max_cns_values), 1),
+        unit="%",
+        context=f"Maximum CNS load out of {len(max_cns_values)} dives"
+    )
+
+
 # Map of all available statistics functions
 STATISTICS_MAP = {
     "average_depth": average_depth,
@@ -643,6 +929,14 @@ STATISTICS_MAP = {
     "dives_by_buddy": dives_by_buddy,
     "total_air_consumption": total_air_consumption,
     "average_air_consumption_rate": average_air_consumption_rate,
+    # New statistics
+    "most_common_buddy": most_common_buddy,
+    "most_visited_location": most_visited_location,
+    "average_max_depth_by_year": average_max_depth_by_year,
+    "total_time_by_location": total_time_by_location,
+    "dives_by_gas_type": dives_by_gas_type,
+    "average_cns_load": average_cns_load,
+    "max_cns_load": max_cns_load,
 }
 
 

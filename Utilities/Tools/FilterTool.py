@@ -9,7 +9,7 @@ the filtered dives available to subsequent statistics tools.
 """
 
 from typing import List, Optional, Type
-from datetime import datetime
+from datetime import datetime, time
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -28,15 +28,20 @@ from Utilities.FilterFunctions import (
 )
 
 
+# =============================================================================
+# DEPTH FILTER
+# =============================================================================
+
 class FilterDivesByDepthInput(BaseModel):
     """Input schema for filtering dives by depth."""
 
-    min_depth: float = Field(
-        description="Minimum depth in meters. Dives must be deeper than this value."
+    min_depth: Optional[float] = Field(
+        None,
+        description="Minimum depth in meters (inclusive). Dives must be at least this deep."
     )
     max_depth: Optional[float] = Field(
         None,
-        description="Maximum depth in meters (optional). Dives must be shallower than this value."
+        description="Maximum depth in meters (inclusive). Dives must be no deeper than this."
     )
 
 
@@ -47,9 +52,10 @@ class FilterDivesByDepthTool(BaseTool):
 
     name: str = "filter_dives_by_depth"
     description: str = (
-        "Filter dives by depth range. Returns dives where maximum depth is within "
-        "the specified range. Use min_depth to find dives deeper than a threshold. "
-        "Optionally use max_depth to limit the upper bound. "
+        "Filter dives by depth range. Provide min_depth to find dives deeper than a threshold, "
+        "max_depth to find shallower dives, or both for a range. "
+        "Examples: min_depth=20 finds dives >=20m; max_depth=15 finds dives <=15m; "
+        "min_depth=10, max_depth=20 finds dives between 10-20m. "
         "The filtered results are automatically available for subsequent statistics calculations."
     )
     args_schema: Type[BaseModel] = FilterDivesByDepthInput
@@ -58,21 +64,29 @@ class FilterDivesByDepthTool(BaseTool):
 
     def _run(
         self,
-        min_depth: float,
+        min_depth: Optional[float] = None,
         max_depth: Optional[float] = None
     ) -> str:
         """Filter dives by depth and return formatted result."""
-        # Apply depth filter
-        filtered = [d for d in self.dives if dive_was_deeper_than(d, min_depth)]
+        if min_depth is None and max_depth is None:
+            return "Please provide at least min_depth or max_depth parameter."
+
+        filtered = list(self.dives)
+
+        # Apply depth filters
+        if min_depth is not None:
+            filtered = [d for d in filtered if dive_was_deeper_than(d, min_depth)]
 
         if max_depth is not None:
             filtered = [d for d in filtered if dive_was_shallower_than(d, max_depth)]
 
         # Store filtered dives in shared state for statistics tools
-        if max_depth:
+        if min_depth is not None and max_depth is not None:
             filter_desc = f"depth {min_depth}m-{max_depth}m"
+        elif min_depth is not None:
+            filter_desc = f"depth >={min_depth}m"
         else:
-            filter_desc = f"depth >{min_depth}m"
+            filter_desc = f"depth <={max_depth}m"
         ToolState.set_filtered_dives(filtered, filter_desc)
 
         # Build result
@@ -109,21 +123,26 @@ class FilterDivesByDepthTool(BaseTool):
     def _format_result(
         self,
         result: FilterResult,
-        min_depth: float,
+        min_depth: Optional[float],
         max_depth: Optional[float]
     ) -> str:
         """Format result as a readable string for the agent."""
         if result.total_count == 0:
-            if max_depth:
+            if min_depth is not None and max_depth is not None:
                 return f"No dives found between {min_depth}m and {max_depth}m depth."
-            return f"No dives found deeper than {min_depth}m."
+            elif min_depth is not None:
+                return f"No dives found deeper than or equal to {min_depth}m."
+            else:
+                return f"No dives found shallower than or equal to {max_depth}m."
 
         lines = [f"Found {result.total_count} dives:"]
 
-        if max_depth:
+        if min_depth is not None and max_depth is not None:
             lines.append(f"- Depth range filter: {min_depth}m to {max_depth}m")
+        elif min_depth is not None:
+            lines.append(f"- Minimum depth filter: >={min_depth}m")
         else:
-            lines.append(f"- Minimum depth filter: {min_depth}m")
+            lines.append(f"- Maximum depth filter: <={max_depth}m")
 
         lines.append(f"- Actual depth range: {result.depth_range[0]:.1f}m to {result.depth_range[1]:.1f}m")
         lines.append(f"- Average max depth: {result.average_depth:.1f}m")
@@ -143,11 +162,15 @@ class FilterDivesByDepthTool(BaseTool):
         return "\n".join(lines)
 
 
+# =============================================================================
+# DATE FILTER
+# =============================================================================
+
 class FilterDivesByDateInput(BaseModel):
     """Input schema for filtering dives by date range."""
 
     start_date: str = Field(
-        description="Start date in YYYY-MM-DD format. Dives must be after this date."
+        description="Start date in YYYY-MM-DD format. Dives must be on or after this date."
     )
     end_date: Optional[str] = Field(
         None,
@@ -262,11 +285,16 @@ class FilterDivesByDateTool(BaseTool):
         return "\n".join(lines)
 
 
+# =============================================================================
+# DURATION FILTER
+# =============================================================================
+
 class FilterDivesByDurationInput(BaseModel):
     """Input schema for filtering dives by duration."""
 
-    min_duration_minutes: float = Field(
-        description="Minimum duration in minutes. Dives must be longer than this."
+    min_duration_minutes: Optional[float] = Field(
+        None,
+        description="Minimum duration in minutes. Dives must be at least this long."
     )
     max_duration_minutes: Optional[float] = Field(
         None,
@@ -291,29 +319,39 @@ class FilterDivesByDurationTool(BaseTool):
 
     def _run(
         self,
-        min_duration_minutes: float,
+        min_duration_minutes: Optional[float] = None,
         max_duration_minutes: Optional[float] = None
     ) -> str:
         """Filter dives by duration and return formatted result."""
-        min_seconds = min_duration_minutes * 60
+        if min_duration_minutes is None and max_duration_minutes is None:
+            return "Please provide at least min_duration_minutes or max_duration_minutes."
 
-        filtered = [d for d in self.dives if dive_was_longer_than(d, min_seconds)]
+        filtered = list(self.dives)
+
+        if min_duration_minutes is not None:
+            min_seconds = min_duration_minutes * 60
+            filtered = [d for d in filtered if dive_was_longer_than(d, min_seconds)]
 
         if max_duration_minutes is not None:
             max_seconds = max_duration_minutes * 60
             filtered = [d for d in filtered if dive_was_shorter_than(d, max_seconds)]
 
         # Store filtered dives in shared state for statistics tools
-        if max_duration_minutes:
+        if min_duration_minutes is not None and max_duration_minutes is not None:
             filter_desc = f"duration {min_duration_minutes}-{max_duration_minutes}min"
+        elif min_duration_minutes is not None:
+            filter_desc = f"duration >={min_duration_minutes}min"
         else:
-            filter_desc = f"duration >{min_duration_minutes}min"
+            filter_desc = f"duration <={max_duration_minutes}min"
         ToolState.set_filtered_dives(filtered, filter_desc)
 
         if not filtered:
-            if max_duration_minutes:
+            if min_duration_minutes is not None and max_duration_minutes is not None:
                 return f"No dives found between {min_duration_minutes} and {max_duration_minutes} minutes."
-            return f"No dives found longer than {min_duration_minutes} minutes."
+            elif min_duration_minutes is not None:
+                return f"No dives found longer than {min_duration_minutes} minutes."
+            else:
+                return f"No dives found shorter than {max_duration_minutes} minutes."
 
         summaries = [
             DiveSummary.from_dive(d, f"dive_{i}")
@@ -321,10 +359,12 @@ class FilterDivesByDurationTool(BaseTool):
         ]
 
         lines = [f"Found {len(summaries)} dives:"]
-        if max_duration_minutes:
+        if min_duration_minutes is not None and max_duration_minutes is not None:
             lines.append(f"- Duration filter: {min_duration_minutes} to {max_duration_minutes} minutes")
-        else:
+        elif min_duration_minutes is not None:
             lines.append(f"- Minimum duration: {min_duration_minutes} minutes")
+        else:
+            lines.append(f"- Maximum duration: {max_duration_minutes} minutes")
 
         durations = [s.duration_minutes for s in summaries]
         lines.append(f"- Duration range: {min(durations):.0f} to {max(durations):.0f} minutes")
@@ -342,6 +382,10 @@ class FilterDivesByDurationTool(BaseTool):
 
         return "\n".join(lines)
 
+
+# =============================================================================
+# BUDDY FILTER
+# =============================================================================
 
 class FilterDivesByBuddyInput(BaseModel):
     """Input schema for filtering dives by buddy."""
@@ -401,6 +445,10 @@ class FilterDivesByBuddyTool(BaseTool):
         return "\n".join(lines)
 
 
+# =============================================================================
+# LOCATION FILTER
+# =============================================================================
+
 class FilterDivesByLocationInput(BaseModel):
     """Input schema for filtering dives by location."""
 
@@ -455,6 +503,379 @@ class FilterDivesByLocationTool(BaseTool):
             lines.append(
                 f"  - {dive.date.strftime('%Y-%m-%d')}: {dive.max_depth_meters:.1f}m, "
                 f"{dive.duration_minutes:.0f}min"
+            )
+
+        if len(summaries) > 5:
+            lines.append(f"  ... and {len(summaries) - 5} more dives")
+
+        return "\n".join(lines)
+
+
+# =============================================================================
+# START TIME FILTER (NEW)
+# =============================================================================
+
+class FilterDivesByStartTimeInput(BaseModel):
+    """Input schema for filtering dives by start time of day."""
+
+    start_after: Optional[str] = Field(
+        None,
+        description="Minimum start time in HH:MM format (24-hour). Dives must start at or after this time."
+    )
+    start_before: Optional[str] = Field(
+        None,
+        description="Maximum start time in HH:MM format (24-hour). Dives must start before this time."
+    )
+
+
+class FilterDivesByStartTimeTool(BaseTool):
+    """Filter dives by time of day they started."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    name: str = "filter_dives_by_start_time"
+    description: str = (
+        "Filter dives by the time of day they started. Use start_after to find dives "
+        "that started at or after a specific time, start_before for dives before a time, "
+        "or both for a time range. Times should be in HH:MM format (24-hour). "
+        "Example: start_after='13:00', start_before='16:00' finds afternoon dives. "
+        "The filtered results are automatically available for subsequent statistics calculations."
+    )
+    args_schema: Type[BaseModel] = FilterDivesByStartTimeInput
+
+    dives: List[Dive] = Field(default_factory=list)
+
+    def _run(
+        self,
+        start_after: Optional[str] = None,
+        start_before: Optional[str] = None
+    ) -> str:
+        """Filter dives by start time and return formatted result."""
+        if start_after is None and start_before is None:
+            return "Please provide at least start_after or start_before parameter."
+
+        # Parse times
+        after_time = None
+        before_time = None
+
+        if start_after:
+            try:
+                parts = start_after.split(":")
+                after_time = time(int(parts[0]), int(parts[1]))
+            except (ValueError, IndexError):
+                return f"Invalid start_after format: {start_after}. Use HH:MM format."
+
+        if start_before:
+            try:
+                parts = start_before.split(":")
+                before_time = time(int(parts[0]), int(parts[1]))
+            except (ValueError, IndexError):
+                return f"Invalid start_before format: {start_before}. Use HH:MM format."
+
+        # Filter dives
+        filtered = []
+        for dive in self.dives:
+            dive_time = dive.basics.start_time.time()
+            if after_time is not None and dive_time < after_time:
+                continue
+            if before_time is not None and dive_time >= before_time:
+                continue
+            filtered.append(dive)
+
+        # Store filtered dives in shared state
+        if start_after and start_before:
+            filter_desc = f"start time {start_after}-{start_before}"
+        elif start_after:
+            filter_desc = f"start time >={start_after}"
+        else:
+            filter_desc = f"start time <{start_before}"
+        ToolState.set_filtered_dives(filtered, filter_desc)
+
+        if not filtered:
+            if start_after and start_before:
+                return f"No dives found starting between {start_after} and {start_before}."
+            elif start_after:
+                return f"No dives found starting at or after {start_after}."
+            else:
+                return f"No dives found starting before {start_before}."
+
+        summaries = [
+            DiveSummary.from_dive(d, f"dive_{i}")
+            for i, d in enumerate(filtered)
+        ]
+
+        lines = [f"Found {len(summaries)} dives:"]
+        if start_after and start_before:
+            lines.append(f"- Start time filter: {start_after} to {start_before}")
+        elif start_after:
+            lines.append(f"- Start time filter: at or after {start_after}")
+        else:
+            lines.append(f"- Start time filter: before {start_before}")
+
+        # Show start time distribution
+        start_times = [d.basics.start_time.strftime("%H:%M") for d in filtered]
+        lines.append(f"- Earliest start: {min(start_times)}")
+        lines.append(f"- Latest start: {max(start_times)}")
+
+        lines.append("\nDive summaries:")
+        for i, dive in enumerate(summaries[:5]):
+            start_str = filtered[i].basics.start_time.strftime("%H:%M")
+            lines.append(
+                f"  - {dive.date.strftime('%Y-%m-%d')} {start_str}: {dive.max_depth_meters:.1f}m, "
+                f"{dive.duration_minutes:.0f}min"
+            )
+
+        if len(summaries) > 5:
+            lines.append(f"  ... and {len(summaries) - 5} more dives")
+
+        return "\n".join(lines)
+
+
+# =============================================================================
+# TEMPERATURE FILTER (NEW)
+# =============================================================================
+
+class FilterDivesByTemperatureInput(BaseModel):
+    """Input schema for filtering dives by water temperature."""
+
+    min_temp: Optional[float] = Field(
+        None,
+        description="Minimum average water temperature in Celsius."
+    )
+    max_temp: Optional[float] = Field(
+        None,
+        description="Maximum average water temperature in Celsius."
+    )
+
+
+class FilterDivesByTemperatureTool(BaseTool):
+    """Filter dives by water temperature."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    name: str = "filter_dives_by_temperature"
+    description: str = (
+        "Filter dives by average water temperature. Use min_temp to find warmer dives, "
+        "max_temp to find colder dives, or both for a temperature range. "
+        "Temperature is in Celsius. "
+        "The filtered results are automatically available for subsequent statistics calculations."
+    )
+    args_schema: Type[BaseModel] = FilterDivesByTemperatureInput
+
+    dives: List[Dive] = Field(default_factory=list)
+
+    def _run(
+        self,
+        min_temp: Optional[float] = None,
+        max_temp: Optional[float] = None
+    ) -> str:
+        """Filter dives by temperature and return formatted result."""
+        if min_temp is None and max_temp is None:
+            return "Please provide at least min_temp or max_temp parameter."
+
+        filtered = []
+        for dive in self.dives:
+            if not dive.timeline.temperature:
+                continue
+            avg_temp = sum(dive.timeline.temperature) / len(dive.timeline.temperature)
+            if min_temp is not None and avg_temp < min_temp:
+                continue
+            if max_temp is not None and avg_temp > max_temp:
+                continue
+            filtered.append(dive)
+
+        # Store filtered dives in shared state
+        if min_temp is not None and max_temp is not None:
+            filter_desc = f"temperature {min_temp}°C-{max_temp}°C"
+        elif min_temp is not None:
+            filter_desc = f"temperature >={min_temp}°C"
+        else:
+            filter_desc = f"temperature <={max_temp}°C"
+        ToolState.set_filtered_dives(filtered, filter_desc)
+
+        if not filtered:
+            if min_temp is not None and max_temp is not None:
+                return f"No dives found with temperature between {min_temp}°C and {max_temp}°C."
+            elif min_temp is not None:
+                return f"No dives found with temperature >= {min_temp}°C."
+            else:
+                return f"No dives found with temperature <= {max_temp}°C."
+
+        summaries = [
+            DiveSummary.from_dive(d, f"dive_{i}")
+            for i, d in enumerate(filtered)
+        ]
+
+        # Calculate avg temps for display
+        avg_temps = []
+        for dive in filtered:
+            if dive.timeline.temperature:
+                avg_temps.append(sum(dive.timeline.temperature) / len(dive.timeline.temperature))
+
+        lines = [f"Found {len(summaries)} dives:"]
+        if min_temp is not None and max_temp is not None:
+            lines.append(f"- Temperature filter: {min_temp}°C to {max_temp}°C")
+        elif min_temp is not None:
+            lines.append(f"- Minimum temperature: {min_temp}°C")
+        else:
+            lines.append(f"- Maximum temperature: {max_temp}°C")
+
+        if avg_temps:
+            lines.append(f"- Temperature range: {min(avg_temps):.1f}°C to {max(avg_temps):.1f}°C")
+            lines.append(f"- Average temperature: {sum(avg_temps)/len(avg_temps):.1f}°C")
+
+        lines.append("\nDive summaries:")
+        for i, dive in enumerate(summaries[:5]):
+            if filtered[i].timeline.temperature:
+                temp = sum(filtered[i].timeline.temperature) / len(filtered[i].timeline.temperature)
+                lines.append(
+                    f"  - {dive.date.strftime('%Y-%m-%d')}: {temp:.1f}°C, {dive.max_depth_meters:.1f}m, "
+                    f"{dive.duration_minutes:.0f}min"
+                )
+
+        if len(summaries) > 5:
+            lines.append(f"  ... and {len(summaries) - 5} more dives")
+
+        return "\n".join(lines)
+
+
+# =============================================================================
+# CNS LOAD FILTER (NEW)
+# =============================================================================
+
+class FilterDivesByCNSLoadInput(BaseModel):
+    """Input schema for filtering dives by CNS oxygen toxicity load."""
+
+    max_cns_load: float = Field(
+        description="Maximum CNS load percentage. Filters dives where max CNS stayed below this value."
+    )
+
+
+class FilterDivesByCNSLoadTool(BaseTool):
+    """Filter dives by CNS oxygen toxicity load."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    name: str = "filter_dives_by_cns_load"
+    description: str = (
+        "Filter dives by maximum CNS (Central Nervous System) oxygen toxicity load. "
+        "Returns dives where the maximum CNS load stayed below the specified percentage. "
+        "Example: max_cns_load=50 finds dives where CNS never exceeded 50%. "
+        "The filtered results are automatically available for subsequent statistics calculations."
+    )
+    args_schema: Type[BaseModel] = FilterDivesByCNSLoadInput
+
+    dives: List[Dive] = Field(default_factory=list)
+
+    def _run(self, max_cns_load: float) -> str:
+        """Filter dives by CNS load and return formatted result."""
+        filtered = []
+        for dive in self.dives:
+            if not dive.timeline.cns_load:
+                # Include dives without CNS data (assume safe)
+                filtered.append(dive)
+                continue
+            max_cns = max(dive.timeline.cns_load)
+            if max_cns <= max_cns_load:
+                filtered.append(dive)
+
+        # Store filtered dives in shared state
+        ToolState.set_filtered_dives(filtered, f"CNS <={max_cns_load}%")
+
+        if not filtered:
+            return f"No dives found with max CNS load <= {max_cns_load}%."
+
+        summaries = [
+            DiveSummary.from_dive(d, f"dive_{i}")
+            for i, d in enumerate(filtered)
+        ]
+
+        # Calculate CNS stats
+        cns_values = []
+        for dive in filtered:
+            if dive.timeline.cns_load:
+                cns_values.append(max(dive.timeline.cns_load))
+
+        lines = [f"Found {len(summaries)} dives with max CNS <= {max_cns_load}%:"]
+
+        if cns_values:
+            lines.append(f"- CNS range: {min(cns_values):.1f}% to {max(cns_values):.1f}%")
+            lines.append(f"- Average max CNS: {sum(cns_values)/len(cns_values):.1f}%")
+
+        lines.append("\nDive summaries:")
+        for i, dive in enumerate(summaries[:5]):
+            cns_str = ""
+            if filtered[i].timeline.cns_load:
+                cns_str = f", CNS {max(filtered[i].timeline.cns_load):.0f}%"
+            lines.append(
+                f"  - {dive.date.strftime('%Y-%m-%d')}: {dive.max_depth_meters:.1f}m, "
+                f"{dive.duration_minutes:.0f}min{cns_str}"
+            )
+
+        if len(summaries) > 5:
+            lines.append(f"  ... and {len(summaries) - 5} more dives")
+
+        return "\n".join(lines)
+
+
+# =============================================================================
+# GAS TYPE FILTER (NEW)
+# =============================================================================
+
+class FilterDivesByGasTypeInput(BaseModel):
+    """Input schema for filtering dives by gas type."""
+
+    gas_type: str = Field(
+        description="Gas type: 'air', 'nitrox', or 'trimix'"
+    )
+
+
+class FilterDivesByGasTypeTool(BaseTool):
+    """Filter dives by breathing gas type."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    name: str = "filter_dives_by_gas_type"
+    description: str = (
+        "Filter dives by breathing gas type. Valid gas types: 'air', 'nitrox', 'trimix'. "
+        "The filtered results are automatically available for subsequent statistics calculations."
+    )
+    args_schema: Type[BaseModel] = FilterDivesByGasTypeInput
+
+    dives: List[Dive] = Field(default_factory=list)
+
+    def _run(self, gas_type: str) -> str:
+        """Filter dives by gas type and return formatted result."""
+        gas_type_lower = gas_type.lower().strip()
+        valid_types = ['air', 'nitrox', 'trimix']
+
+        if gas_type_lower not in valid_types:
+            return f"Invalid gas type: {gas_type}. Valid types: {', '.join(valid_types)}"
+
+        filtered = [d for d in self.dives if d.gasses.gas.lower() == gas_type_lower]
+
+        # Store filtered dives in shared state
+        ToolState.set_filtered_dives(filtered, f"gas type '{gas_type}'")
+
+        if not filtered:
+            return f"No dives found using {gas_type}."
+
+        summaries = [
+            DiveSummary.from_dive(d, f"dive_{i}")
+            for i, d in enumerate(filtered)
+        ]
+
+        lines = [f"Found {len(summaries)} dives using {gas_type}:"]
+
+        depths = [s.max_depth_meters for s in summaries]
+        lines.append(f"- Depth range: {min(depths):.1f}m to {max(depths):.1f}m")
+        lines.append(f"- Average depth: {sum(depths)/len(depths):.1f}m")
+
+        lines.append("\nDive summaries:")
+        for dive in summaries[:5]:
+            lines.append(
+                f"  - {dive.date.strftime('%Y-%m-%d')}: {dive.max_depth_meters:.1f}m, "
+                f"{dive.duration_minutes:.0f}min at {dive.location}"
             )
 
         if len(summaries) > 5:

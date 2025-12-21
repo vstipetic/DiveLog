@@ -29,7 +29,9 @@ class CalculateStatisticInput(BaseModel):
             "average_duration, longest_dive, shortest_dive, deepest_dive, "
             "shallowest_dive, average_temperature, dives_by_year, dives_by_month, "
             "dives_by_location, dives_by_buddy, total_air_consumption, "
-            "average_air_consumption_rate"
+            "average_air_consumption_rate, most_common_buddy, most_visited_location, "
+            "average_max_depth_by_year, total_time_by_location, dives_by_gas_type, "
+            "average_cns_load, max_cns_load"
         )
     )
 
@@ -59,7 +61,9 @@ class CalculateStatisticTool(BaseTool):
         "max_depth, min_depth, total_dive_time, dive_count, average_duration, longest_dive, "
         "shortest_dive, deepest_dive, shallowest_dive, average_temperature, "
         "dives_by_year, dives_by_month, dives_by_location, dives_by_buddy, "
-        "total_air_consumption, average_air_consumption_rate. "
+        "total_air_consumption, average_air_consumption_rate, most_common_buddy, "
+        "most_visited_location, average_max_depth_by_year, total_time_by_location, "
+        "dives_by_gas_type, average_cns_load, max_cns_load. "
         "TIP: Call a filter tool first if you want statistics on a subset of dives."
     )
     args_schema: Type[BaseModel] = CalculateStatisticInput

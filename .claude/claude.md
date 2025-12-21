@@ -33,9 +33,11 @@ The application follows a modular architecture with clear separation of concerns
    - `AgentModels.py` - Agent-friendly data models
 
 5. **Agent Tools Layer** (`Utilities/Tools/`) - **LangChain + Pydantic**
-   - `FilterTool.py` - Dive filtering tools (depth, date, duration, buddy, location)
+   - `FilterTool.py` - Dive filtering tools (depth, date, duration, buddy, location, start time, temperature, CNS load, gas type)
+   - `DurationAtDepthTool.py` - Filter for continuous time at depth
    - `StatisticsTool.py` - Statistics calculation tools
    - `SearchTool.py` - Search and listing tools
+   - `ToolState.py` - Shared state for tool chaining
 
 6. **Parser Layer** (`Utilities/Parsers/`)
    - `GarminDiveParser.py` - Garmin .fit file parser
@@ -267,7 +269,7 @@ Base `Gear` class (`Utilities/ClassUtils/GearClasses.py`) contains:
 7. **Statistics Agent** (`Utilities/StatisticsAgent.py`)
    - Full LangChain agent implementation
    - Multi-LLM support (Gemini, OpenAI, Claude)
-   - 10 specialized tools for filtering, statistics, and search
+   - 15 specialized tools for filtering, statistics, and search
    - Natural language query processing
    - Chat history management
 
