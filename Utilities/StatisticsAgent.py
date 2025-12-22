@@ -29,8 +29,8 @@ from Utilities.Tools.FilterTool import (
     FilterDivesByTemperatureTool,
     FilterDivesByCNSLoadTool,
     FilterDivesByGasTypeTool,
+    FilterDivesByDurationAtDepthTool,
 )
-from Utilities.Tools.DurationAtDepthTool import FilterDivesByDurationAtDepthTool
 from Utilities.Tools.StatisticsTool import (
     CalculateStatisticTool,
     CalculateTimeBelowDepthTool,

@@ -15,6 +15,7 @@ from Utilities.Tools.FilterTool import (
     FilterDivesByDurationTool,
     FilterDivesByBuddyTool,
     FilterDivesByLocationTool,
+    FilterDivesByDurationAtDepthTool,
 )
 
 from Utilities.Tools.StatisticsTool import (
@@ -37,6 +38,7 @@ __all__ = [
     "FilterDivesByDurationTool",
     "FilterDivesByBuddyTool",
     "FilterDivesByLocationTool",
+    "FilterDivesByDurationAtDepthTool",
     # Statistics tools
     "CalculateStatisticTool",
     "CalculateTimeBelowDepthTool",

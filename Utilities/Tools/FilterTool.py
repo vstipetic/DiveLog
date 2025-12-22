@@ -882,3 +882,122 @@ class FilterDivesByGasTypeTool(BaseTool):
             lines.append(f"  ... and {len(summaries) - 5} more dives")
 
         return "\n".join(lines)
+
+
+# =============================================================================
+# DURATION AT DEPTH FILTER
+# =============================================================================
+
+class FilterDivesByDurationAtDepthInput(BaseModel):
+    """Input schema for filtering dives by continuous time at depth."""
+
+    min_depth: float = Field(
+        description="Minimum depth in meters. Filters for time spent at or below this depth."
+    )
+    min_duration: float = Field(
+        description="Minimum continuous duration in minutes at that depth."
+    )
+
+
+class FilterDivesByDurationAtDepthTool(BaseTool):
+    """
+    Filter dives by continuous time spent at or below a specific depth.
+
+    This tool finds dives where the diver maintained a depth at or below
+    the threshold for a continuous period of at least the specified duration.
+
+    Example uses:
+    - "Find dives where I spent at least 5 continuous minutes below 30m"
+    - "Show dives with extended bottom time at 20+ meters"
+    - "Which dives had me at 40m or deeper for 3+ minutes?"
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    name: str = "filter_dives_by_duration_at_depth"
+    description: str = (
+        "Filter dives where the diver spent at least X continuous minutes "
+        "at or below a specific depth. Useful for finding dives with extended "
+        "bottom time at depth. Provide min_depth (meters) and min_duration (minutes). "
+        "The filtered results are automatically available for subsequent statistics calculations."
+    )
+    args_schema: Type[BaseModel] = FilterDivesByDurationAtDepthInput
+
+    dives: List[Dive] = Field(default_factory=list)
+
+    def _has_continuous_time_at_depth(
+        self, dive: Dive, depth: float, duration_minutes: float
+    ) -> bool:
+        """
+        Check if a dive has continuous time at or below the specified depth.
+
+        Args:
+            dive: Dive object to check
+            depth: Minimum depth threshold in meters
+            duration_minutes: Required continuous duration in minutes
+
+        Returns:
+            True if dive has the required continuous time at depth
+        """
+        if not dive.timeline.depths or not dive.timeline.timestamps:
+            return False
+
+        if len(dive.timeline.depths) != len(dive.timeline.timestamps):
+            return False
+
+        current_streak_seconds = 0.0
+        duration_seconds = duration_minutes * 60
+
+        for i in range(len(dive.timeline.depths) - 1):
+            if dive.timeline.depths[i] >= depth:
+                # Currently at or below target depth, add time to streak
+                time_delta = dive.timeline.timestamps[i + 1] - dive.timeline.timestamps[i]
+                current_streak_seconds += time_delta
+                if current_streak_seconds >= duration_seconds:
+                    return True
+            else:
+                # Above target depth, reset streak
+                current_streak_seconds = 0.0
+
+        return False
+
+    def _run(self, min_depth: float, min_duration: float) -> str:
+        """Filter dives by continuous time at depth."""
+        if not self.dives:
+            return "No dives available to filter."
+
+        filtered = [
+            dive for dive in self.dives
+            if self._has_continuous_time_at_depth(dive, min_depth, min_duration)
+        ]
+
+        filter_desc = f"at least {min_duration} min continuous at {min_depth}m+"
+        ToolState.set_filtered_dives(filtered, filter_desc)
+
+        if not filtered:
+            return (
+                f"No dives found with at least {min_duration} continuous minutes "
+                f"at or below {min_depth}m."
+            )
+
+        # Build summary
+        lines = [
+            f"Found {len(filtered)} dive(s) with at least {min_duration} "
+            f"continuous minutes at or below {min_depth}m:",
+            ""
+        ]
+
+        for dive in filtered[:10]:  # Show first 10
+            date_str = dive.basics.start_time.strftime("%Y-%m-%d")
+            location = dive.location.name if dive.location.name else "Unknown location"
+            max_depth = max(dive.timeline.depths) if dive.timeline.depths else 0
+            duration_min = dive.basics.duration / 60
+            lines.append(
+                f"  - {date_str} at {location}: {max_depth:.1f}m max, "
+                f"{duration_min:.0f} min total"
+            )
+
+        if len(filtered) > 10:
+            lines.append(f"  ... and {len(filtered) - 10} more")
+
+        return "\n".join(lines)
