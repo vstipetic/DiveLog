@@ -33,6 +33,13 @@ from Utilities.Schemas.AgentModels import (
     QueryResponse,
 )
 
+from Utilities.Schemas.ChartSchemas import (
+    PlotHistogramInput,
+    PlotBarChartInput,
+    PlotPieChartInput,
+    PlotScatterInput,
+)
+
 __all__ = [
     # Input schemas
     "DepthFilterInput",
@@ -51,4 +58,9 @@ __all__ = [
     "DepthProfile",
     "DiveDetails",
     "QueryResponse",
+    # Chart schemas
+    "PlotHistogramInput",
+    "PlotBarChartInput",
+    "PlotPieChartInput",
+    "PlotScatterInput",
 ]

@@ -17,6 +17,7 @@ from datetime import datetime
 
 from Utilities.StatisticsAgent import StatisticsAgent
 from Utilities.APIKeyDetector import detect_api_keys
+from Utilities.Tools.ChartState import ChartState
 from Utilities.Parsers.GarminDiveParser import parse_garmin_dive, get_fit_file_metadata
 from Utilities.AddDive import add_dive, bulk_add_dives, preview_fit_file
 from Utilities.ClassUtils.GearClasses import Gear, Mask, Suit, Gloves, Boots, BCD, Fins
@@ -827,8 +828,10 @@ def render_example_queries():
         "What's my total dive time?",
         "Who is my most common dive buddy?",
         "List my 5 deepest dives",
-        "How much time have I spent below 15 meters?",
-        "Show me dives at [location name]",
+        "Plot the distribution of my dive depths",
+        "Create a bar chart of dives by month",
+        "Is there a relationship between depth and dive duration?",
+        "Show a pie chart of dives by location",
     ]
 
     with st.expander("💡 Example Questions", expanded=False):
@@ -845,16 +848,27 @@ def render_chat_interface(agent: StatisticsAgent):
     """Render the main chat interface."""
     # Create a container for chat messages - this ensures proper ordering
     chat_container = st.container()
-    
+
     # Display chat history in the container
     with chat_container:
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
-    
+
+                # Render any charts associated with this message
+                charts = message.get("charts", [])
+                if charts:
+                    for chart_spec in charts:
+                        try:
+                            chart = chart_spec.get("chart")
+                            if chart is not None:
+                                st.altair_chart(chart, use_container_width=True)
+                        except Exception as e:
+                            st.error(f"Failed to render chart: {e}")
+
     # Chat input at the bottom (st.chat_input always renders at bottom)
     prompt = st.chat_input("Ask about your dives...")
-    
+
     # Return the prompt for processing outside this function
     return prompt
 
@@ -864,15 +878,22 @@ def process_query(agent: StatisticsAgent, query: str):
     # Add user message to session state
     st.session_state.messages.append({"role": "user", "content": query})
 
-    # Get agent response
+    # Get agent response (ChartState is cleared and populated by agent.process_query)
     try:
         response = agent.process_query(query)
     except Exception as e:
         response = f"Error: {str(e)}"
 
-    # Add assistant response to session state
-    st.session_state.messages.append({"role": "assistant", "content": response})
-    
+    # Capture any charts generated during query processing
+    charts = ChartState.get_charts() if ChartState.has_charts() else []
+
+    # Add assistant response to session state (with charts if any)
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": response,
+        "charts": charts  # List of chart specifications from ChartState
+    })
+
     return response
 
 

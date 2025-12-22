@@ -41,6 +41,13 @@ from Utilities.Tools.SearchTool import (
     ListAllDivesTool,
 )
 from Utilities.Tools.ToolState import ToolState
+from Utilities.Tools.ChartState import ChartState
+from Utilities.Tools.ChartTools import (
+    PlotHistogramTool,
+    PlotBarChartTool,
+    PlotPieChartTool,
+    PlotScatterTool,
+)
 
 
 # System prompt for the agent
@@ -63,6 +70,9 @@ Available capabilities:
 - Search for dives by text in various fields
 - Get detailed information about specific dives
 - List all dives with sorting options
+- Create visualizations: histograms (depth/duration/temperature distributions),
+  bar charts (dives by month/year/location/buddy), pie charts (proportional breakdowns),
+  scatter plots (relationships between metrics like depth vs duration)
 
 The user has {num_dives} dives in their log.
 
@@ -71,6 +81,33 @@ When a user asks a question:
 - Choose the right tool(s) to get the information
 - Present the results in a friendly, readable format
 - Offer to provide more details if relevant
+
+VISUALIZATION TOOLS:
+
+Bar and pie chart tools support two modes:
+1. Auto-grouping: Use category_by to group by month, year, location, buddy, or gas_type
+2. Custom data: Use custom_data with pre-computed counts for custom groupings
+
+For custom groupings (seasons, depth bands, etc.), use the custom_data parameter:
+- Filter dives multiple times to get counts for each category
+- Pass the counts as custom_data: {{"category_name": count, ...}}
+- Provide a descriptive title
+
+Example workflow for "pie chart of dives by season":
+1. Filter by date for each season and count results:
+   - Winter (Dec-Feb): filter_dives_by_date → count
+   - Spring (Mar-May): filter_dives_by_date → count
+   - Summer (Jun-Aug): filter_dives_by_date → count
+   - Fall (Sep-Nov): filter_dives_by_date → count
+2. Call plot_pie_chart with custom_data={{"Winter": 5, "Spring": 10, "Summer": 20, "Fall": 8}}
+
+Example workflow for "bar chart of dives by depth bands":
+1. Filter by depth ranges and count:
+   - 0-10m: filter_dives_by_depth(min=0, max=10) → count
+   - 10-20m: filter_dives_by_depth(min=10, max=20) → count
+   - 20-30m: filter_dives_by_depth(min=20, max=30) → count
+   - 30+m: filter_dives_by_depth(min=30) → count
+2. Call plot_bar_chart with custom_data={{"0-10m": 5, "10-20m": 12, "20-30m": 8, "30+m": 3}}
 
 Examples of questions you can answer:
 - "What's my average dive depth?"
@@ -84,6 +121,12 @@ Examples of questions you can answer:
 - "Show dives where I spent 5+ minutes at 30m depth"
 - "What's my average CNS load on deep dives?"
 - "How many nitrox dives have I done?"
+- "Plot the distribution of my dive depths"
+- "Show a bar chart of dives by month in 2024"
+- "Is there a relationship between depth and dive duration?"
+- "Create a pie chart of dives by location"
+- "Show a pie chart of my dives by season"
+- "Create a bar chart of dives by depth bands (0-10m, 10-20m, etc.)"
 """
 
 
@@ -211,6 +254,11 @@ class StatisticsAgent:
             SearchDivesTool(dives=self.dives),
             GetDiveSummaryTool(dives=self.dives),
             ListAllDivesTool(dives=self.dives),
+            # Chart tools - use all_dives, check ToolState first for filtered data
+            PlotHistogramTool(all_dives=self.dives),
+            PlotBarChartTool(all_dives=self.dives),
+            PlotPieChartTool(all_dives=self.dives),
+            PlotScatterTool(all_dives=self.dives),
         ]
 
     def _create_agent(self):
@@ -247,8 +295,9 @@ class StatisticsAgent:
                 "using the Add Dive feature."
             )
 
-        # Clear any previous filter state from prior queries
+        # Clear any previous filter/chart state from prior queries
         ToolState.clear()
+        ChartState.clear()
 
         try:
             result = self.agent_executor.invoke({

@@ -31,13 +31,16 @@ The application follows a modular architecture with clear separation of concerns
    - `ToolInputs.py` - Input validation schemas for LangChain tools
    - `ToolOutputs.py` - Output result schemas (FilterResult, StatisticsResult, DiveSummary)
    - `AgentModels.py` - Agent-friendly data models
+   - `ChartSchemas.py` - Input schemas for chart visualization tools
 
 5. **Agent Tools Layer** (`Utilities/Tools/`) - **LangChain + Pydantic**
    - `FilterTool.py` - Dive filtering tools (depth, date, duration, buddy, location, start time, temperature, CNS load, gas type)
    - `DurationAtDepthTool.py` - Filter for continuous time at depth
    - `StatisticsTool.py` - Statistics calculation tools
    - `SearchTool.py` - Search and listing tools
-   - `ToolState.py` - Shared state for tool chaining
+   - `ChartTools.py` - Visualization tools (histogram, bar chart, pie chart, scatter plot)
+   - `ToolState.py` - Shared state for filter→statistics chaining
+   - `ChartState.py` - Shared state for chart→Streamlit rendering
 
 6. **Parser Layer** (`Utilities/Parsers/`)
    - `GarminDiveParser.py` - Garmin .fit file parser
@@ -284,10 +287,12 @@ Base `Gear` class (`Utilities/ClassUtils/GearClasses.py`) contains:
    - AgentModels.py - Agent-friendly data models
 
 10. **LangChain Tools** (`Utilities/Tools/`)
-    - FilterTool.py - 5 filtering tools (depth, date, duration, buddy, location)
+    - FilterTool.py - 10 filtering tools (depth, date, duration, buddy, location, start time, temperature, CNS load, gas type, duration at depth)
     - StatisticsTool.py - 2 statistics tools (calculate_statistic, time_below_depth)
     - SearchTool.py - 3 search tools (search_dives, get_dive_summary, list_all_dives)
-    - ToolState.py - Shared state for tool chaining (filter → statistics)
+    - ChartTools.py - 4 visualization tools (plot_histogram, plot_bar_chart, plot_pie_chart, plot_scatter)
+    - ToolState.py - Shared state for tool chaining (filter → statistics/charts)
+    - ChartState.py - Shared state for chart rendering (tools → Streamlit)
     - All tools use `ConfigDict(arbitrary_types_allowed=True)` for attrs compatibility
 
 ### Tool Chaining via ToolState
@@ -326,8 +331,7 @@ Without this mechanism, statistics would incorrectly operate on ALL dives instea
    - (Replaced by Streamlit UI)
 
 3. **Advanced Features**
-   - Trend analysis visualizations
-   - Data export functionality
+   - Data export functionality (CSV, PDF reports)
 
 ## File Structure
 
@@ -367,19 +371,23 @@ DiveLog/
     │   ├── __init__.py
     │   ├── ToolInputs.py          # Input validation schemas
     │   ├── ToolOutputs.py         # FilterResult, StatisticsResult, DiveSummary
-    │   └── AgentModels.py         # Agent-friendly data models
+    │   ├── AgentModels.py         # Agent-friendly data models
+    │   └── ChartSchemas.py        # Chart tool input schemas
     └── Tools/                     # LangChain tools (Pydantic + attrs bridge)
         ├── __init__.py
-        ├── FilterTool.py          # 5 filtering tools (uses ConfigDict)
+        ├── FilterTool.py          # 10 filtering tools (uses ConfigDict)
         ├── StatisticsTool.py      # 2 statistics tools (uses ConfigDict)
         ├── SearchTool.py          # 3 search tools (uses ConfigDict)
-        └── ToolState.py           # Shared state for filter→statistics chaining
+        ├── ChartTools.py          # 4 visualization tools (Altair charts)
+        ├── ToolState.py           # Shared state for filter→statistics chaining
+        └── ChartState.py          # Shared state for chart→Streamlit rendering
 ```
 
 ## Query Examples
 
 The agent system supports natural language queries like:
 
+**Statistics & Filtering:**
 - "What's my average dive depth?"
 - "Show me all dives deeper than 30 meters"
 - "How many dives did I do in 2023?"
@@ -388,6 +396,14 @@ The agent system supports natural language queries like:
 - "What's the longest dive I've done?"
 - "Find all dives with buddy 'John'"
 - "What's my total dive time this year?"
+
+**Visualizations (with Altair charts rendered in Streamlit):**
+- "Plot the distribution of my dive depths"
+- "Show a bar chart of dives by month"
+- "Create a pie chart of dives by location"
+- "Is there a relationship between depth and dive duration?" (scatter plot)
+- "Show me a histogram of dive temperatures"
+- "Plot dives by year for my deep dives (>20m)"
 
 ## Implementation Priorities
 
@@ -401,9 +417,9 @@ The agent system supports natural language queries like:
    - Gear usage statistics and tracking
 
 3. **Low Priority** (Future enhancements)
-   - Advanced trend analysis and visualizations
    - Export functionality (CSV, PDF reports)
    - Multi-format support (beyond Garmin)
+   - Additional chart types (time series, heatmaps)
    - Mobile-responsive Streamlit UI improvements
 
 ## Known Issues

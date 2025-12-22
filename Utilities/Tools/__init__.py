@@ -30,6 +30,14 @@ from Utilities.Tools.SearchTool import (
 )
 
 from Utilities.Tools.ToolState import ToolState
+from Utilities.Tools.ChartState import ChartState
+
+from Utilities.Tools.ChartTools import (
+    PlotHistogramTool,
+    PlotBarChartTool,
+    PlotPieChartTool,
+    PlotScatterTool,
+)
 
 __all__ = [
     # Filter tools
@@ -48,4 +56,10 @@ __all__ = [
     "ListAllDivesTool",
     # State management
     "ToolState",
+    "ChartState",
+    # Chart tools
+    "PlotHistogramTool",
+    "PlotBarChartTool",
+    "PlotPieChartTool",
+    "PlotScatterTool",
 ]
