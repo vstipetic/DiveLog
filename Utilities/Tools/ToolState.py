@@ -88,14 +88,21 @@ class ToolState:
     def add_labeled_group(cls, label: str, dives: List[Dive]) -> None:
         """
         Store a labeled group of dives for use in scatter plots.
-
-        Args:
-            label: Name for this group (e.g., "Summer", "Deep dives")
-            dives: List of Dive objects for this group
+        If a group with the same label already exists, merges the new dives
+        into the existing group (useful for accumulating across years).
         """
         if cls._labeled_groups is None:
             cls._labeled_groups = {}
-        cls._labeled_groups[label] = list(dives)
+        
+        # Merge if label already exists, otherwise create new
+        if label in cls._labeled_groups:
+            # Merge: combine existing and new dives, avoiding duplicates
+            existing_dives = cls._labeled_groups[label]
+            existing_ids = {id(d) for d in existing_dives}  # Use object identity
+            new_dives = [d for d in dives if id(d) not in existing_ids]
+            cls._labeled_groups[label] = existing_dives + new_dives
+        else:
+            cls._labeled_groups[label] = list(dives)
 
     @classmethod
     def get_labeled_groups(cls) -> Dict[str, List[Dive]]:
