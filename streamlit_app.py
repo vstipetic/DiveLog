@@ -220,7 +220,7 @@ def render_import_tab():
         )
 
     with col2:
-        if st.button("Apply", use_container_width=True):
+        if st.button("Apply", width="stretch"):
             folder_path = Path(new_folder)
             if not folder_path.exists():
                 try:
@@ -265,7 +265,7 @@ def render_import_tab():
     col1, col2 = st.columns([2, 2])
 
     with col1:
-        if st.button("Reload All Dives", use_container_width=True, type="primary"):
+        if st.button("Reload All Dives", width="stretch", type="primary"):
             refresh_agent()
             st.success("Agent cache cleared. Dives will be reloaded on next query.")
 
@@ -484,7 +484,7 @@ def render_single_dive_import():
     # Import button
     st.divider()
 
-    if st.button("Import Dive", type="primary", use_container_width=True):
+    if st.button("Import Dive", type="primary", width="stretch"):
         try:
             # Prepare output path
             storage_path = Path(st.session_state.storage_folder)
@@ -642,7 +642,7 @@ def render_bulk_import():
         copy_fit_files = st.checkbox("Copy .fit files to storage", value=True,
                                      help="Keep a copy of original .fit files alongside the pickle files")
 
-    if st.button("Import All Files", type="primary", use_container_width=True):
+    if st.button("Import All Files", type="primary", width="stretch"):
         storage_path = Path(st.session_state.storage_folder)
         storage_path.mkdir(parents=True, exist_ok=True)
 
@@ -760,12 +760,12 @@ def render_sidebar():
         # Quick actions
         st.subheader("Quick Actions")
 
-        if st.button("🔄 Reload Dives", use_container_width=True):
+        if st.button("🔄 Reload Dives", width="stretch"):
             if st.session_state.agent:
                 st.session_state.agent.reload_dives()
                 st.success("Dives reloaded!")
 
-        if st.button("🗑️ Clear Chat", use_container_width=True):
+        if st.button("🗑️ Clear Chat", width="stretch"):
             st.session_state.messages = []
             if st.session_state.agent:
                 st.session_state.agent.clear_history()
@@ -839,7 +839,7 @@ def render_example_queries():
         for i, example in enumerate(examples):
             col = cols[i % 2]
             with col:
-                if st.button(example, key=f"example_{i}", use_container_width=True):
+                if st.button(example, key=f"example_{i}", width="stretch"):
                     return example
     return None
 
@@ -862,7 +862,7 @@ def render_chat_interface(agent: StatisticsAgent):
                         try:
                             chart = chart_spec.get("chart")
                             if chart is not None:
-                                st.altair_chart(chart, use_container_width=True)
+                                st.altair_chart(chart, width="stretch")
                         except Exception as e:
                             st.error(f"Failed to render chart: {e}")
 
