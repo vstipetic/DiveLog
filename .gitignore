@@ -67,3 +67,6 @@ dist/
 *.tmp
 *.bak
 *.orig
+
+# Claude code config
+.claude/
