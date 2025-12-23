@@ -440,8 +440,12 @@ class PlotScatterTool(BaseTool):
 
     Supports metrics: depth, duration, temperature, cns_load.
 
-    This tool respects previous filters - if a filter was applied,
-    the chart shows only filtered dives.
+    Two color-coding modes:
+    1. Built-in (color_by): Quick grouping by month, year, location, buddy, gas_type
+    2. Custom (use_labeled_groups): Use labeled groups created via
+       filter → label_filtered_dives workflow for seasons, depth bands, etc.
+
+    This tool respects previous filters when not using labeled groups.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -449,16 +453,24 @@ class PlotScatterTool(BaseTool):
     name: str = "plot_scatter"
     description: str = (
         "Create a scatter plot to explore relationships between two dive metrics. "
-        "Use this to investigate correlations (e.g., depth vs duration). "
-        "Metrics: 'depth' (max depth in meters), 'duration' (time in minutes), "
-        "'temperature' (water temp in Celsius), 'cns_load' (CNS toxicity %). "
-        "This tool respects any previously applied filters."
+        "Metrics: 'depth', 'duration', 'temperature', 'cns_load'. "
+        "Two color-coding options: "
+        "(1) color_by for quick built-in grouping: 'month', 'year', 'location', 'buddy', 'gas_type'. "
+        "(2) use_labeled_groups=True for custom groupings created via "
+        "filter → label_filtered_dives workflow (seasons, depth bands, etc.). "
+        "Without color coding, respects any previously applied filters."
     )
     args_schema: Type[BaseModel] = PlotScatterInput
 
     all_dives: List[Dive] = Field(default_factory=list)
 
-    def _run(self, x_metric: str, y_metric: str) -> str:
+    def _run(
+        self,
+        x_metric: str,
+        y_metric: str,
+        color_by: Optional[str] = None,
+        use_labeled_groups: Optional[bool] = False
+    ) -> str:
         """Create scatter plot and store in ChartState."""
         x_metric = x_metric.lower()
         y_metric = y_metric.lower()
@@ -468,34 +480,16 @@ class PlotScatterTool(BaseTool):
         if y_metric not in VALID_METRICS:
             return f"Invalid y_metric '{y_metric}'. Choose from: {', '.join(VALID_METRICS)}"
 
-        target_dives, context = _get_target_dives(self.all_dives)
+        # Validate mutually exclusive options
+        if color_by is not None and use_labeled_groups:
+            return "Cannot use both color_by and use_labeled_groups. Choose one color-coding mode."
 
-        if not target_dives:
-            return "No dives available to plot."
+        # Validate color_by if provided
+        if color_by is not None:
+            color_by = color_by.lower()
+            if color_by not in VALID_CATEGORIES:
+                return f"Invalid color_by '{color_by}'. Choose from: {', '.join(VALID_CATEGORIES)}"
 
-        # Extract both metrics for each dive
-        data = []
-        for dive in target_dives:
-            x_val = _extract_metric(dive, x_metric)
-            y_val = _extract_metric(dive, y_metric)
-            if x_val is not None and y_val is not None:
-                # Also include date for tooltip
-                date_str = dive.basics.start_time.strftime("%Y-%m-%d") if dive.basics.start_time else "Unknown"
-                location = dive.location.name if dive.location.name else "Unknown"
-                data.append({
-                    "x": x_val,
-                    "y": y_val,
-                    "date": date_str,
-                    "location": location
-                })
-
-        if not data:
-            return f"No dives with valid {x_metric} and {y_metric} data found."
-
-        if len(data) == 1:
-            return f"Only 1 dive with valid data found. Need at least 2 dives for a scatter plot."
-
-        # Create DataFrame
         metric_labels = {
             "depth": "Max Depth (m)",
             "duration": "Duration (min)",
@@ -505,26 +499,179 @@ class PlotScatterTool(BaseTool):
         x_label = metric_labels.get(x_metric, x_metric.title())
         y_label = metric_labels.get(y_metric, y_metric.title())
 
-        df = pd.DataFrame(data)
-        df.columns = [x_label, y_label, "Date", "Location"]
+        # === MODE: Use labeled groups ===
+        if use_labeled_groups:
+            if not ToolState.has_labeled_groups():
+                return (
+                    "No labeled groups found. First create groups using: "
+                    "(1) filter dives → (2) label_filtered_dives('Group Name') → repeat → "
+                    "(3) call this tool with use_labeled_groups=True"
+                )
 
-        # Create Altair scatter plot
-        chart = alt.Chart(df).mark_circle(size=60).encode(
-            x=alt.X(f"{x_label}:Q", title=x_label),
-            y=alt.Y(f"{y_label}:Q", title=y_label),
-            tooltip=[x_label, y_label, "Date", "Location"]
-        ).properties(
-            title=f"{y_label} vs {x_label}",
+            labeled_groups = ToolState.get_labeled_groups()
+            data = []
+
+            for label, dives in labeled_groups.items():
+                for dive in dives:
+                    x_val = _extract_metric(dive, x_metric)
+                    y_val = _extract_metric(dive, y_metric)
+                    if x_val is not None and y_val is not None:
+                        date_str = dive.basics.start_time.strftime("%Y-%m-%d") if dive.basics.start_time else "Unknown"
+                        location = dive.location.name if dive.location.name else "Unknown"
+                        data.append({
+                            "x": x_val,
+                            "y": y_val,
+                            "date": date_str,
+                            "location": location,
+                            "group": label
+                        })
+
+            if not data:
+                return f"No dives with valid {x_metric} and {y_metric} data found in labeled groups."
+
+            if len(data) == 1:
+                return f"Only 1 dive with valid data found. Need at least 2 dives for a scatter plot."
+
+            df = pd.DataFrame(data)
+            df.columns = [x_label, y_label, "Date", "Location", "Group"]
+            tooltip_fields = [x_label, y_label, "Group", "Date", "Location"]
+
+            # Build encoding with color by group
+            encoding = {
+                "x": alt.X(f"{x_label}:Q", title=x_label),
+                "y": alt.Y(f"{y_label}:Q", title=y_label),
+                "tooltip": tooltip_fields,
+                "color": alt.Color(
+                    "Group:N",
+                    title="Group",
+                    legend=alt.Legend(title="Group")
+                )
+            }
+
+            chart_title = f"{y_label} vs {x_label} (by Group)"
+            context = f"Using {len(labeled_groups)} labeled groups"
+
+            # Create chart
+            chart = alt.Chart(df).mark_circle(size=60).encode(**encoding).properties(
+                title=chart_title,
+                width=500,
+                height=400
+            ).interactive()
+
+            ChartState.add_chart(
+                chart=chart,
+                chart_type="scatter",
+                title=chart_title,
+                description=f"Scatter plot with {len(labeled_groups)} custom groups"
+            )
+
+            group_counts = {label: len([d for d in data if d["group"] == label]) for label in labeled_groups}
+            group_summary = ", ".join(f"'{k}': {v}" for k, v in group_counts.items())
+
+            return (
+                f"Created scatter plot of {y_metric} vs {x_metric} with "
+                f"{len(labeled_groups)} groups ({group_summary}). "
+                f"Showing {len(data)} total data points."
+            )
+
+        # === MODE: Standard (with optional color_by) ===
+        target_dives, context = _get_target_dives(self.all_dives)
+
+        if not target_dives:
+            return "No dives available to plot."
+
+        # Extract metrics and optional category for each dive
+        data = []
+        for dive in target_dives:
+            x_val = _extract_metric(dive, x_metric)
+            y_val = _extract_metric(dive, y_metric)
+            if x_val is not None and y_val is not None:
+                date_str = dive.basics.start_time.strftime("%Y-%m-%d") if dive.basics.start_time else "Unknown"
+                location = dive.location.name if dive.location.name else "Unknown"
+                row = {
+                    "x": x_val,
+                    "y": y_val,
+                    "date": date_str,
+                    "location": location
+                }
+                if color_by is not None:
+                    cat = _extract_category(dive, color_by)
+                    row["category"] = cat if cat is not None else "Unknown"
+                data.append(row)
+
+        if not data:
+            return f"No dives with valid {x_metric} and {y_metric} data found."
+
+        if len(data) == 1:
+            return f"Only 1 dive with valid data found. Need at least 2 dives for a scatter plot."
+
+        df = pd.DataFrame(data)
+
+        # Rename columns based on whether color_by is used
+        if color_by is not None:
+            category_label = color_by.replace("_", " ").title()
+            df.columns = [x_label, y_label, "Date", "Location", category_label]
+            tooltip_fields = [x_label, y_label, category_label, "Date", "Location"]
+        else:
+            df.columns = [x_label, y_label, "Date", "Location"]
+            tooltip_fields = [x_label, y_label, "Date", "Location"]
+
+        # Build encoding
+        encoding = {
+            "x": alt.X(f"{x_label}:Q", title=x_label),
+            "y": alt.Y(f"{y_label}:Q", title=y_label),
+            "tooltip": tooltip_fields
+        }
+
+        # Add color encoding if color_by is specified
+        if color_by is not None:
+            if color_by == "month":
+                month_order = ["January", "February", "March", "April", "May", "June",
+                              "July", "August", "September", "October", "November", "December"]
+                encoding["color"] = alt.Color(
+                    f"{category_label}:N",
+                    title=category_label,
+                    sort=month_order,
+                    legend=alt.Legend(title=category_label)
+                )
+            elif color_by == "year":
+                encoding["color"] = alt.Color(
+                    f"{category_label}:N",
+                    title=category_label,
+                    sort="ascending",
+                    legend=alt.Legend(title=category_label)
+                )
+            else:
+                encoding["color"] = alt.Color(
+                    f"{category_label}:N",
+                    title=category_label,
+                    legend=alt.Legend(title=category_label)
+                )
+
+        # Create chart title
+        if color_by is not None:
+            chart_title = f"{y_label} vs {x_label} (by {category_label})"
+        else:
+            chart_title = f"{y_label} vs {x_label}"
+
+        chart = alt.Chart(df).mark_circle(size=60).encode(**encoding).properties(
+            title=chart_title,
             width=500,
             height=400
         ).interactive()
 
-        # Store in ChartState
         ChartState.add_chart(
             chart=chart,
             chart_type="scatter",
-            title=f"{y_label} vs {x_label}",
-            description=f"Scatter plot comparing {x_metric} and {y_metric}"
+            title=chart_title,
+            description=f"Scatter plot comparing {x_metric} and {y_metric}" +
+                       (f" colored by {color_by}" if color_by else "")
         )
 
-        return f"Created scatter plot of {y_metric} vs {x_metric}. {context}. Showing {len(data)} data points."
+        response = f"Created scatter plot of {y_metric} vs {x_metric}"
+        if color_by is not None:
+            unique_categories = df[category_label].nunique()
+            response += f", color-coded by {color_by} ({unique_categories} groups)"
+        response += f". {context}. Showing {len(data)} data points."
+
+        return response

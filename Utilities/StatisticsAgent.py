@@ -30,6 +30,7 @@ from Utilities.Tools.FilterTool import (
     FilterDivesByCNSLoadTool,
     FilterDivesByGasTypeTool,
     FilterDivesByDurationAtDepthTool,
+    LabelFilteredDivesTool,
 )
 from Utilities.Tools.StatisticsTool import (
     CalculateStatisticTool,
@@ -72,7 +73,7 @@ Available capabilities:
 - List all dives with sorting options
 - Create visualizations: histograms (depth/duration/temperature distributions),
   bar charts (dives by month/year/location/buddy), pie charts (proportional breakdowns),
-  scatter plots (relationships between metrics like depth vs duration)
+  scatter plots (relationships between metrics like depth vs duration, with optional color coding by category)
 
 The user has {num_dives} dives in their log.
 
@@ -109,6 +110,39 @@ Example workflow for "bar chart of dives by depth bands":
    - 30+m: filter_dives_by_depth(min=30) → count
 2. Call plot_bar_chart with custom_data={{"0-10m": 5, "10-20m": 12, "20-30m": 8, "30+m": 3}}
 
+SCATTER PLOTS WITH COLOR CODING:
+
+Scatter plots support two color-coding modes:
+
+1. QUICK MODE (color_by): For built-in categories
+   Categories: month, year, location, buddy, gas_type
+   Example: plot_scatter(x_metric="depth", y_metric="duration", color_by="month")
+
+2. CUSTOM MODE (labeled groups): For custom groupings like seasons, depth bands, etc.
+   Use the filter → label_filtered_dives workflow:
+
+   Example workflow for "scatter plot of depth vs duration by season":
+   1. filter_dives_by_date(start="2024-06-01", end="2024-08-31")
+   2. label_filtered_dives("Summer")
+   3. filter_dives_by_date(start="2024-09-01", end="2024-11-30")
+   4. label_filtered_dives("Fall")
+   5. filter_dives_by_date(start="2024-12-01", end="2025-02-28")
+   6. label_filtered_dives("Winter")
+   7. filter_dives_by_date(start="2024-03-01", end="2024-05-31")
+   8. label_filtered_dives("Spring")
+   9. plot_scatter(x_metric="depth", y_metric="duration", use_labeled_groups=True)
+
+   Example workflow for "scatter plot by depth bands":
+   1. filter_dives_by_depth(min=0, max=10)
+   2. label_filtered_dives("0-10m")
+   3. filter_dives_by_depth(min=10, max=20)
+   4. label_filtered_dives("10-20m")
+   5. filter_dives_by_depth(min=20, max=30)
+   6. label_filtered_dives("20-30m")
+   7. filter_dives_by_depth(min=30)
+   8. label_filtered_dives("30m+")
+   9. plot_scatter(x_metric="depth", y_metric="duration", use_labeled_groups=True)
+
 Examples of questions you can answer:
 - "What's my average dive depth?"
 - "How many dives did I do in 2024?"
@@ -127,6 +161,11 @@ Examples of questions you can answer:
 - "Create a pie chart of dives by location"
 - "Show a pie chart of my dives by season"
 - "Create a bar chart of dives by depth bands (0-10m, 10-20m, etc.)"
+- "Scatter plot of depth vs duration, colored by month"
+- "Show depth vs temperature relationship grouped by location"
+- "Plot duration vs depth with dives colored by year"
+- "Scatter plot of depth vs duration by season (summer, fall, winter, spring)"
+- "Show depth vs duration for shallow (0-15m) vs deep (15m+) dives"
 """
 
 
@@ -247,6 +286,8 @@ class StatisticsAgent:
             FilterDivesByCNSLoadTool(dives=self.dives),
             FilterDivesByGasTypeTool(dives=self.dives),
             FilterDivesByDurationAtDepthTool(dives=self.dives),
+            # Utility tool for creating labeled groups (for scatter plots)
+            LabelFilteredDivesTool(),
             # Statistics tools - use all_dives as fallback, check ToolState first
             CalculateStatisticTool(all_dives=self.dives),
             CalculateTimeBelowDepthTool(all_dives=self.dives),
@@ -277,7 +318,7 @@ class StatisticsAgent:
             tools=self.tools,
             verbose=True,
             handle_parsing_errors=True,
-            max_iterations=10
+            max_iterations=50
         )
 
     def process_query(self, query: str) -> str:

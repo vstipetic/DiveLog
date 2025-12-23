@@ -1001,3 +1001,64 @@ class FilterDivesByDurationAtDepthTool(BaseTool):
             lines.append(f"  ... and {len(filtered) - 10} more")
 
         return "\n".join(lines)
+
+
+# =============================================================================
+# LABEL FILTERED DIVES (for scatter plot groupings)
+# =============================================================================
+
+class LabelFilteredDivesInput(BaseModel):
+    """Input schema for labeling filtered dives."""
+
+    label: str = Field(
+        description="Label to assign to the currently filtered dives. "
+                   "Use descriptive names like 'Summer', 'Deep dives', '2024 dives', etc."
+    )
+
+
+class LabelFilteredDivesTool(BaseTool):
+    """
+    Assign a label to the currently filtered dives for use in grouped scatter plots.
+
+    This tool allows building custom groupings for scatter plots:
+    1. Filter dives (e.g., by date for summer months)
+    2. Label them (e.g., "Summer")
+    3. Filter again (e.g., fall months)
+    4. Label them (e.g., "Fall")
+    5. Call scatter plot with use_labeled_groups=True
+
+    Labels are cumulative until cleared (at the start of each new query).
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    name: str = "label_filtered_dives"
+    description: str = (
+        "Assign a label to the currently filtered dives for use in grouped scatter plots. "
+        "Use this after filtering to create custom groupings (seasons, depth bands, etc.). "
+        "Workflow: (1) filter → (2) label → (3) filter again → (4) label again → "
+        "(5) plot_scatter with use_labeled_groups=True. "
+        "Labels accumulate across calls until a new query starts."
+    )
+    args_schema: Type[BaseModel] = LabelFilteredDivesInput
+
+    def _run(self, label: str) -> str:
+        """Store the currently filtered dives with the given label."""
+        if not ToolState.has_filtered_dives():
+            return (
+                "No filtered dives to label. First apply a filter "
+                "(e.g., filter_dives_by_date) then call this tool."
+            )
+
+        dives = ToolState.get_filtered_dives()
+        ToolState.add_labeled_group(label, dives)
+
+        # Report existing groups
+        groups = ToolState.get_labeled_groups()
+        group_summary = ", ".join(f"'{k}' ({len(v)} dives)" for k, v in groups.items())
+
+        return (
+            f"Labeled {len(dives)} dives as '{label}'. "
+            f"Current groups: {group_summary}. "
+            f"Use plot_scatter with use_labeled_groups=True to visualize."
+        )

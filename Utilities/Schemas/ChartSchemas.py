@@ -75,7 +75,13 @@ class PlotPieChartInput(BaseModel):
 
 
 class PlotScatterInput(BaseModel):
-    """Input for plotting a scatter plot showing relationship between two metrics."""
+    """Input for plotting a scatter plot showing relationship between two metrics.
+
+    Two color-coding modes:
+    1. Built-in: Use color_by for quick grouping by month, year, location, etc.
+    2. Custom: Use use_labeled_groups=True after creating labeled groups via
+       filter → label_filtered_dives workflow (for seasons, depth bands, etc.)
+    """
 
     x_metric: str = Field(
         description="Metric for X-axis. Options: 'depth' (max depth in meters), "
@@ -86,4 +92,15 @@ class PlotScatterInput(BaseModel):
         description="Metric for Y-axis. Options: 'depth' (max depth in meters), "
                    "'duration' (dive time in minutes), 'temperature' (avg water temp), "
                    "'cns_load' (max CNS toxicity percentage)"
+    )
+    color_by: Optional[str] = Field(
+        default=None,
+        description="Quick color-coding by built-in category. Options: 'month', 'year', "
+                   "'location', 'buddy', 'gas_type'. Cannot be used with use_labeled_groups."
+    )
+    use_labeled_groups: Optional[bool] = Field(
+        default=False,
+        description="Set to True to use custom labeled groups created via "
+                   "filter → label_filtered_dives workflow. Use this for custom groupings "
+                   "like seasons or depth bands. Cannot be used with color_by."
     )
