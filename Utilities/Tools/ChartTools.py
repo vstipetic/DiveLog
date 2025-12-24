@@ -8,6 +8,7 @@ All chart tools respect ToolState: if a filter was applied, charts are
 generated from the filtered subset; otherwise from all dives.
 """
 
+import math
 from typing import Dict, List, Optional, Type
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field, ConfigDict
@@ -35,17 +36,29 @@ VALID_CATEGORIES = {"month", "year", "location", "buddy", "gas_type"}
 VALID_PIE_CATEGORIES = {"location", "buddy", "gas_type"}
 
 
+def _is_valid_number(x) -> bool:
+    """Check if value is a valid finite number (not None, NaN, or Inf)."""
+    if x is None:
+        return False
+    try:
+        return not (math.isnan(x) or math.isinf(x))
+    except (TypeError, ValueError):
+        return False
+
+
 def _extract_metric(dive: Dive, metric: str) -> Optional[float]:
-    """Extract a metric value from a dive."""
+    """Extract a metric value from a dive, filtering out invalid values."""
     if metric == "depth":
-        return max(dive.timeline.depths) if dive.timeline.depths else None
+        depths = [d for d in dive.timeline.depths if _is_valid_number(d)]
+        return max(depths) if depths else None
     elif metric == "duration":
-        return dive.basics.duration / 60 if dive.basics.duration else None
+        dur = dive.basics.duration
+        return dur / 60 if dur and _is_valid_number(dur) else None
     elif metric == "temperature":
-        temps = [t for t in dive.timeline.temperatures if t is not None]
+        temps = [t for t in dive.timeline.temperatures if _is_valid_number(t)]
         return sum(temps) / len(temps) if temps else None
     elif metric == "cns_load":
-        cns = [c for c in dive.timeline.cns_loads if c is not None and c > 0]
+        cns = [c for c in dive.timeline.cns_loads if _is_valid_number(c) and c > 0]
         return max(cns) if cns else None
     return None
 
@@ -254,10 +267,13 @@ class PlotBarChartTool(BaseTool):
         if not categories:
             return f"No valid {category_by} data found in the dives."
 
-        # Create DataFrame with counts
-        df = pd.DataFrame({"Category": categories})
-        counts = df["Category"].value_counts().reset_index()
-        counts.columns = ["Category", "Count"]
+        # Create DataFrame with counts using explicit column naming
+        # to avoid pandas version-dependent column names from value_counts()
+        category_counts = pd.Series(categories).value_counts()
+        counts = pd.DataFrame({
+            "Category": category_counts.index.tolist(),
+            "Count": category_counts.values.tolist()
+        })
 
         # Sort appropriately
         if category_by == "month":
@@ -397,10 +413,13 @@ class PlotPieChartTool(BaseTool):
         if not categories:
             return f"No valid {category_by} data found in the dives."
 
-        # Create DataFrame with counts
-        df = pd.DataFrame({"Category": categories})
-        counts = df["Category"].value_counts().reset_index()
-        counts.columns = ["Category", "Count"]
+        # Create DataFrame with counts using explicit column naming
+        # to avoid pandas version-dependent column names from value_counts()
+        category_counts = pd.Series(categories).value_counts()
+        counts = pd.DataFrame({
+            "Category": category_counts.index.tolist(),
+            "Count": category_counts.values.tolist()
+        })
 
         # Limit to top 8 categories for readability, group rest as "Other"
         if len(counts) > 8:
@@ -519,11 +538,11 @@ class PlotScatterTool(BaseTool):
                         date_str = dive.basics.start_time.strftime("%Y-%m-%d") if dive.basics.start_time else "Unknown"
                         location = dive.location.name if dive.location.name else "Unknown"
                         data.append({
-                            "x": x_val,
-                            "y": y_val,
-                            "date": date_str,
-                            "location": location,
-                            "group": label
+                            x_label: x_val,
+                            y_label: y_val,
+                            "Date": date_str,
+                            "Location": location,
+                            "Group": label
                         })
 
             if not data:
@@ -532,8 +551,8 @@ class PlotScatterTool(BaseTool):
             if len(data) == 1:
                 return f"Only 1 dive with valid data found. Need at least 2 dives for a scatter plot."
 
-            df = pd.DataFrame(data)
-            df.columns = [x_label, y_label, "Date", "Location", "Group"]
+            # Use explicit column order to ensure correct mapping
+            df = pd.DataFrame(data, columns=[x_label, y_label, "Date", "Location", "Group"])
             tooltip_fields = [x_label, y_label, "Group", "Date", "Location"]
 
             # Build encoding with color by group
@@ -565,7 +584,7 @@ class PlotScatterTool(BaseTool):
                 description=f"Scatter plot with {len(labeled_groups)} custom groups"
             )
 
-            group_counts = {label: len([d for d in data if d["group"] == label]) for label in labeled_groups}
+            group_counts = {label: len([d for d in data if d["Group"] == label]) for label in labeled_groups}
             group_summary = ", ".join(f"'{k}': {v}" for k, v in group_counts.items())
 
             return (
@@ -580,6 +599,9 @@ class PlotScatterTool(BaseTool):
         if not target_dives:
             return "No dives available to plot."
 
+        # Determine category label if color_by is used
+        category_label = color_by.replace("_", " ").title() if color_by is not None else None
+
         # Extract metrics and optional category for each dive
         data = []
         for dive in target_dives:
@@ -589,14 +611,14 @@ class PlotScatterTool(BaseTool):
                 date_str = dive.basics.start_time.strftime("%Y-%m-%d") if dive.basics.start_time else "Unknown"
                 location = dive.location.name if dive.location.name else "Unknown"
                 row = {
-                    "x": x_val,
-                    "y": y_val,
-                    "date": date_str,
-                    "location": location
+                    x_label: x_val,
+                    y_label: y_val,
+                    "Date": date_str,
+                    "Location": location
                 }
                 if color_by is not None:
                     cat = _extract_category(dive, color_by)
-                    row["category"] = cat if cat is not None else "Unknown"
+                    row[category_label] = cat if cat is not None else "Unknown"
                 data.append(row)
 
         if not data:
@@ -605,15 +627,12 @@ class PlotScatterTool(BaseTool):
         if len(data) == 1:
             return f"Only 1 dive with valid data found. Need at least 2 dives for a scatter plot."
 
-        df = pd.DataFrame(data)
-
-        # Rename columns based on whether color_by is used
+        # Create DataFrame with explicit column order to ensure correct mapping
         if color_by is not None:
-            category_label = color_by.replace("_", " ").title()
-            df.columns = [x_label, y_label, "Date", "Location", category_label]
+            df = pd.DataFrame(data, columns=[x_label, y_label, "Date", "Location", category_label])
             tooltip_fields = [x_label, y_label, category_label, "Date", "Location"]
         else:
-            df.columns = [x_label, y_label, "Date", "Location"]
+            df = pd.DataFrame(data, columns=[x_label, y_label, "Date", "Location"])
             tooltip_fields = [x_label, y_label, "Date", "Location"]
 
         # Build encoding

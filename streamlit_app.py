@@ -1045,8 +1045,10 @@ def render_chat_interface(agent: StatisticsAgent):
                             chart = chart_spec.get("chart")
                             if chart is not None:
                                 st.altair_chart(chart, width="stretch")
+                            else:
+                                st.info(f"Chart '{chart_spec.get('title', 'Unknown')}' has no data to display")
                         except Exception as e:
-                            st.error(f"Failed to render chart: {e}")
+                            st.error(f"Failed to render chart '{chart_spec.get('title', 'Unknown')}': {e}")
 
     # Chat input at the bottom (st.chat_input always renders at bottom)
     prompt = st.chat_input("Ask about your dives...")

@@ -22,9 +22,18 @@ class ChartState:
     Streamlit calls get_charts() to retrieve and render all charts.
 
     The agent should call clear() at the start of each new query to reset state.
+
+    Note: Uses None + lazy initialization instead of mutable default [] to avoid
+    issues with Python's class machinery and Streamlit's module reloading.
     """
 
-    _charts: List[Dict[str, Any]] = []
+    _charts: Optional[List[Dict[str, Any]]] = None
+
+    @classmethod
+    def _ensure_initialized(cls) -> None:
+        """Ensure _charts is initialized."""
+        if cls._charts is None:
+            cls._charts = []
 
     @classmethod
     def add_chart(
@@ -43,6 +52,7 @@ class ChartState:
             title: Chart title
             description: Optional description of what the chart shows
         """
+        cls._ensure_initialized()
         cls._charts.append({
             "chart": chart,
             "chart_type": chart_type,
@@ -58,12 +68,13 @@ class ChartState:
         Returns:
             List of chart specification dictionaries
         """
+        cls._ensure_initialized()
         return cls._charts.copy()
 
     @classmethod
     def has_charts(cls) -> bool:
         """Check if there are any charts stored."""
-        return len(cls._charts) > 0
+        return cls._charts is not None and len(cls._charts) > 0
 
     @classmethod
     def clear(cls) -> None:
@@ -73,4 +84,5 @@ class ChartState:
     @classmethod
     def get_chart_count(cls) -> int:
         """Get count of stored charts."""
+        cls._ensure_initialized()
         return len(cls._charts)
