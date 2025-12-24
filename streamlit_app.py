@@ -20,7 +20,8 @@ from Utilities.APIKeyDetector import detect_api_keys
 from Utilities.Tools.ChartState import ChartState
 from Utilities.Parsers.GarminDiveParser import parse_garmin_dive, get_fit_file_metadata
 from Utilities.AddDive import add_dive, bulk_add_dives, preview_fit_file
-from Utilities.ClassUtils.GearClasses import Gear, Mask, Suit, Gloves, Boots, BCD, Fins
+from Utilities.ClassUtils.GearClasses import Gear, Mask, Suit, Gloves, Boots, BCD, Fins, GloveSize
+from Utilities.AddGear import add_mask, add_suit, add_gloves, add_boots
 
 
 # Page configuration
@@ -715,6 +716,187 @@ def render_bulk_import():
         st.success("Agent cache cleared. New dives will be loaded on next query.")
 
 
+def render_add_gear_tab():
+    """Render the Add Gear tab."""
+    st.header("Add New Gear")
+
+    st.info("Create new gear items that can be associated with your dives.")
+
+    # Gear type selection
+    gear_type = st.selectbox(
+        "Gear Type",
+        ["Mask", "Suit", "Gloves", "Boots"],
+        help="Select the type of gear to add"
+    )
+
+    st.divider()
+
+    # Common fields
+    st.subheader("Gear Details")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        name = st.text_input("Name", help="Unique name for this gear item (e.g., 'My Cressi Mask')")
+    with col2:
+        is_rental = st.checkbox("Rental Gear", help="Check if this is rental equipment (excluded from statistics)")
+
+    description = st.text_area(
+        "Description (optional)",
+        help="Optional description or notes about this gear"
+    )
+
+    # Type-specific fields
+    st.divider()
+    st.subheader("Type-Specific Details")
+
+    thickness = None
+    size = None
+    glove_size_str = None
+
+    if gear_type == "Mask":
+        st.caption("Masks have no additional fields.")
+
+    elif gear_type == "Suit":
+        col1, col2 = st.columns(2)
+        with col1:
+            thickness = st.number_input(
+                "Thickness (mm)",
+                min_value=1,
+                max_value=10,
+                value=5,
+                help="Wetsuit thickness in millimeters"
+            )
+        with col2:
+            size = st.number_input(
+                "Size",
+                min_value=1,
+                max_value=60,
+                value=50,
+                help="Suit size number"
+            )
+
+    elif gear_type == "Gloves":
+        col1, col2 = st.columns(2)
+        with col1:
+            thickness = st.number_input(
+                "Thickness (mm)",
+                min_value=1,
+                max_value=10,
+                value=3,
+                help="Glove thickness in millimeters"
+            )
+        with col2:
+            glove_size_str = st.selectbox(
+                "Size",
+                ["S", "M", "L", "XL"],
+                index=1,
+                help="Glove size"
+            )
+
+    elif gear_type == "Boots":
+        col1, col2 = st.columns(2)
+        with col1:
+            thickness = st.number_input(
+                "Thickness (mm)",
+                min_value=1,
+                max_value=10,
+                value=5,
+                help="Boot thickness in millimeters"
+            )
+        with col2:
+            size = st.number_input(
+                "Size",
+                min_value=20,
+                max_value=50,
+                value=42,
+                help="Boot size number"
+            )
+
+    # Save button
+    st.divider()
+
+    if st.button("Save Gear", type="primary", use_container_width=True):
+        # Validate name
+        if not name or not name.strip():
+            st.error("Please enter a name for the gear.")
+            return
+
+        # Create output path
+        gear_folder = Path("Storage/Gear")
+        gear_folder.mkdir(parents=True, exist_ok=True)
+
+        # Sanitize filename
+        safe_name = name.strip().replace(" ", "_").replace("/", "-").replace("\\", "-")
+        output_path = gear_folder / f"{safe_name}.pickle"
+
+        # Check for existing gear with same name
+        if output_path.exists():
+            st.warning(f"Gear with name '{name}' already exists. Choose a different name.")
+            return
+
+        # Common arguments
+        common_args = {
+            "name": name.strip(),
+            "output_path": str(output_path),
+            "number_of_dives": 0,
+            "total_dive_time": 0,
+            "description": description.strip() if description and description.strip() else None,
+            "is_rental": is_rental
+        }
+
+        try:
+            if gear_type == "Mask":
+                add_mask(**common_args)
+
+            elif gear_type == "Suit":
+                add_suit(thickness=thickness, size=size, **common_args)
+
+            elif gear_type == "Gloves":
+                glove_size = GloveSize[glove_size_str]
+                add_gloves(thickness=thickness, size=glove_size, **common_args)
+
+            elif gear_type == "Boots":
+                add_boots(thickness=thickness, size=size, **common_args)
+
+            st.success(f"Gear '{name}' saved successfully!")
+            st.caption(f"Saved to: {output_path}")
+
+            # Show what was created
+            with st.expander("Gear Details", expanded=True):
+                st.write(f"**Type:** {gear_type}")
+                st.write(f"**Name:** {name}")
+                if description:
+                    st.write(f"**Description:** {description}")
+                st.write(f"**Rental:** {'Yes' if is_rental else 'No'}")
+                if thickness:
+                    st.write(f"**Thickness:** {thickness}mm")
+                if size:
+                    st.write(f"**Size:** {size}")
+                if glove_size_str:
+                    st.write(f"**Size:** {glove_size_str}")
+
+        except Exception as e:
+            st.error(f"Failed to save gear: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
+
+    # Show existing gear
+    st.divider()
+    st.subheader("Existing Gear")
+
+    gear_items = load_gear_items()
+    total_gear = sum(len(items) for items in gear_items.values())
+
+    if total_gear == 0:
+        st.info("No gear found in Storage/Gear/. Create your first gear item above!")
+    else:
+        for gear_type_name, items in gear_items.items():
+            if items:
+                with st.expander(f"{gear_type_name} ({len(items)})", expanded=False):
+                    for item_name in items.keys():
+                        st.text(f"• {item_name}")
+
+
 def render_sidebar():
     """Render the sidebar with settings and info."""
     with st.sidebar:
@@ -954,13 +1136,16 @@ def main():
         return
 
     # Create tabs
-    tab_chat, tab_import = st.tabs(["AI Chat", "Import Dives"])
+    tab_chat, tab_import, tab_gear = st.tabs(["AI Chat", "Import Dives", "Add Gear"])
 
     with tab_chat:
         render_chat_tab(agent)
 
     with tab_import:
         render_import_tab()
+
+    with tab_gear:
+        render_add_gear_tab()
 
 
 if __name__ == "__main__":

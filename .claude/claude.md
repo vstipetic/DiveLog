@@ -1,18 +1,17 @@
 # DiveLog Project Overview
 
+**Version:** 1.0.0
+
 ## Project Description
 
-DiveLog is a Python-based dive log management application with advanced search and statistics functionality. The main purpose is to extract statistics from dive logs and find interesting trends in diving data. The application parses Garmin dive computer `.fit` files and provides a GUI for managing dives, gear, and analyzing dive statistics.
+DiveLog is a Python-based dive log management application with advanced search and statistics functionality. The main purpose is to extract statistics from dive logs and find interesting trends in diving data. The application parses Garmin dive computer `.fit` files and provides a modern Streamlit web UI for managing dives, gear, and analyzing dive statistics with AI-powered natural language queries.
 
 ### High-Level Architecture
 
 The application follows a modular architecture with clear separation of concerns:
 
 1. **GUI Layer** (Root directory)
-   - `MainApp.py` - Main Tkinter GUI application window with menu and navigation
-   - `AddDiveApp.py` - Tkinter GUI for adding individual dives
-   - `AddGearApp.py` - Tkinter GUI for adding gear items
-   - `streamlit_app.py` - Modern Streamlit web UI for AI queries and dive import
+   - `streamlit_app.py` - Modern Streamlit web UI with AI Chat, Import Dives, and Add Gear tabs
    - `DiveFilterer.py` - Filter utility functions
 
 2. **Business Logic Layer** (`Utilities/`)
@@ -54,14 +53,14 @@ The application follows a modular architecture with clear separation of concerns
 
 ### Import Workflows
 
-**Manual Import** (via `AddDiveApp.py` → `add_dive()`):
+**Single Dive Import** (via Streamlit "Import Dives" tab → `add_dive()`):
 - Single dive with full metadata enrichment
 - Auto-extracts: GPS coordinates, gas type, all timeline data
 - Manual input for: location name, buddy, gear, weight, tank pressures, location description
 - Output: Complete `Dive` object in `Storage/Dives/`
 - Use when: Building comprehensive dive log with context
 
-**Bulk Import** (via `MainApp.py` → `bulk_add_dives()`):
+**Bulk Import** (via Streamlit "Import Dives" tab → `bulk_add_dives()`):
 - Multiple .fit files from directory - **fully automated, zero manual input required**
 - Auto-extracts ALL available data from .fit files (see "Auto-Extraction" section below)
 - Empty fields: People, Gear, Pressures, Location descriptions (not in .fit files)
@@ -112,7 +111,6 @@ The parser (`GarminDiveParser.py`) extracts extensive data from Garmin .fit file
 - **langchain-openai**: OpenAI GPT integration
 - **langchain-anthropic**: Anthropic Claude integration
 - **streamlit**: Modern web UI framework
-- **tkinter** - Built-in GUI framework (Python standard library)
 - **pickle** - Serialization format (Python standard library)
 
 ### Build System
@@ -243,14 +241,11 @@ Base `Gear` class (`Utilities/ClassUtils/GearClasses.py`) contains:
    - Gear serialization/deserialization
    - Gear selection in dive creation
 
-3. **Tkinter GUI Applications**
-   - Main application window with menu
-   - Add Dive GUI with all metadata fields
-   - Add Gear GUI with type-specific fields
-   - Bulk import functionality
-
-4. **Streamlit Web UI** (`streamlit_app.py`)
+3. **Streamlit Web UI** (`streamlit_app.py`)
    - **AI Chat Tab**: Natural language queries with LLM-powered responses
+     - Quick statistics display (total dives, time, avg/max depth)
+     - Example query buttons (10 pre-built queries)
+     - Chart rendering (Altair visualizations)
    - **Import Dives Tab**: Complete dive import functionality
      - Storage folder selection (default: `Storage/BulkDives`)
      - **Single dive import**: Shows auto-extracted data preview (depth, duration, gas, GPS, etc.)
@@ -258,35 +253,38 @@ Base `Gear` class (`Utilities/ClassUtils/GearClasses.py`) contains:
      - Visual indicators for auto-extracted vs manual-input fields
      - Gear selection dropdowns (loaded from `Storage/Gear/`)
      - Refresh functionality to reload dives into agent
-   - Quick statistics display (total dives, time, avg/max depth)
+   - **Add Gear Tab**: Create new gear items
+     - Supports Mask, Suit, Gloves, Boots
+     - Type-specific fields (thickness, size)
+     - Rental gear flag
+     - Existing gear display
    - Multi-provider support (Gemini, OpenAI, Claude)
-   - Example query buttons
 
-5. **Filtering System**
+4. **Filtering System**
    - Filter functions: `dive_was_deeper_than`, `dive_was_shallower_than`, `dive_was_longer_than`, `dive_was_shorter_than`, `dive_was_after_date`, `dive_was_before_date`, `dive_was_between_dates`, `dive_was_between_times`, `dive_was_deeper_than_for_duration`, `dive_had_buddy`, `dive_was_at_location`, `dive_used_gas`
    - Filter utility functions in root `DiveFilterer.py`
 
-6. **API Key Detection**
+5. **API Key Detection**
    - Environment variable scanning for OpenAI, Gemini, and Anthropic API keys
 
-7. **Statistics Agent** (`Utilities/StatisticsAgent.py`)
+6. **Statistics Agent** (`Utilities/StatisticsAgent.py`)
    - Full LangChain agent implementation
    - Multi-LLM support (Gemini, OpenAI, Claude)
    - 15 specialized tools for filtering, statistics, and search
    - Natural language query processing
    - Chat history management
 
-8. **Statistics Functions** (`Utilities/StatisticsFunctions.py`)
+7. **Statistics Functions** (`Utilities/StatisticsFunctions.py`)
    - 18+ statistics functions implemented
    - Averages, totals, counts, breakdowns by time/location/buddy
    - All return Pydantic StatisticsResult
 
-9. **Pydantic Schemas** (`Utilities/Schemas/`)
+8. **Pydantic Schemas** (`Utilities/Schemas/`)
    - ToolInputs.py - Input validation schemas
    - ToolOutputs.py - Output result schemas (FilterResult, StatisticsResult, DiveSummary)
    - AgentModels.py - Agent-friendly data models
 
-10. **LangChain Tools** (`Utilities/Tools/`)
+9. **LangChain Tools** (`Utilities/Tools/`)
     - FilterTool.py - 10 filtering tools (depth, date, duration, buddy, location, start time, temperature, CNS load, gas type, duration at depth)
     - StatisticsTool.py - 2 statistics tools (calculate_statistic, time_below_depth)
     - SearchTool.py - 3 search tools (search_dives, get_dive_summary, list_all_dives)
@@ -326,26 +324,20 @@ Without this mechanism, statistics would incorrectly operate on ALL dives instea
 1. **BCD and Fins Gear Types**
    - Class definitions exist but are stubs
 
-2. **Basic Statistics Display in Tkinter**
-   - `populate_dive_stats()` and `populate_gear_stats()` methods are placeholders
-   - (Replaced by Streamlit UI)
-
-3. **Advanced Features**
+2. **Advanced Features**
    - Data export functionality (CSV, PDF reports)
 
 ## File Structure
 
 ```
 DiveLog/
-├── MainApp.py                    # Main Tkinter GUI application
-├── AddDiveApp.py                 # Add dive Tkinter GUI
-├── AddGearApp.py                 # Add gear Tkinter GUI
+├── streamlit_app.py              # Streamlit web UI (AI Chat + Import Dives + Add Gear)
 ├── DiveFilterer.py               # Root-level filter utilities
-├── streamlit_app.py              # Streamlit web UI (AI Chat + Import Dives tabs)
 ├── explorer.ipynb                # Jupyter notebook (exploration/testing)
 ├── pyproject.toml                # uv/pip dependencies
 ├── uv.lock                       # uv lock file
 ├── README.md                     # Project readme
+├── CHANGELOG.md                  # Version history
 ├── Storage/
 │   ├── Dives/                    # Individual dive pickle files (with metadata)
 │   │   ├── *.pickle              # Dive objects (attrs-based)
@@ -405,36 +397,27 @@ The agent system supports natural language queries like:
 - "Show me a histogram of dive temperatures"
 - "Plot dives by year for my deep dives (>20m)"
 
-## Implementation Priorities
+## Future Enhancements
 
-1. **High Priority** (Core functionality gaps)
+1. **Gear Types**
    - Complete BCD and Fins gear types (currently stubs)
-   - Implement exit coordinate parsing from .fit files
 
-2. **Medium Priority** (Enhanced features)
-   - Add populate_dive_stats() and populate_gear_stats() in Tkinter UI
+2. **Data Parsing**
+   - Implement exit coordinate parsing from .fit files
+   - Multi-format support (beyond Garmin)
+
+3. **Statistics**
    - Additional statistics functions (SAC rate analysis, temperature trends)
    - Gear usage statistics and tracking
 
-3. **Low Priority** (Future enhancements)
+4. **Export & Visualization**
    - Export functionality (CSV, PDF reports)
-   - Multi-format support (beyond Garmin)
    - Additional chart types (time series, heatmaps)
-   - Mobile-responsive Streamlit UI improvements
 
-## Known Issues
+## Known Limitations
 
-All major bugs have been fixed:
+v1.0 is feature-complete for core functionality. Minor limitations:
 
-1. ~~**Filter Functions Bug**~~: ✅ FIXED - Duplicate function removed
-2. ~~**Attribute Access Bug**~~: ✅ FIXED - All `basic_information` changed to `basics`
-3. ~~**Duplicate Files**~~: ✅ FIXED - `Utilities/DiveFilterer.py` removed, root version is canonical
-4. ~~**Import Path Issue**~~: ✅ FIXED - No longer relevant
-5. ~~**Depth Parsing Bug**~~: ✅ FIXED - Garmin .fit files provide depth in meters, not millimeters. Removed erroneous `/1000.0` division in `GarminDiveParser.py`
-6. ~~**Pydantic/attrs Incompatibility**~~: ✅ FIXED - Added `model_config = ConfigDict(arbitrary_types_allowed=True)` to all LangChain tools to allow attrs-based `Dive` objects
-7. ~~**Statistics Tool Chaining Bug**~~: ✅ FIXED - Statistics tools now use filtered dives from ToolState when a filter was applied. Previously, `calculate_statistic` always operated on ALL dives, ignoring any prior filtering (e.g., "How many dives in 2024?" would return total count instead of 2024 count).
-
-**Remaining Issues:**
 - Exit coordinates not parsed from .fit files (always None)
-- BCD and Fins gear types are stubs
-
+- BCD and Fins gear types are stubs (not fully implemented)
+- Tank pressures are not stored in Garmin .fit files (requires manual entry)

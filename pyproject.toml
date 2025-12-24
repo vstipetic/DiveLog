@@ -1,6 +1,6 @@
 [project]
 name = "divelog"
-version = "0.2.0"
+version = "1.0.0"
 description = "Dive log management with AI-powered statistics analysis"
 authors = [
     {name = "vstipetic", email = "vedran.stipetic@gmail.com"}
