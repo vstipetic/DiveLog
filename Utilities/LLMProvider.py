@@ -319,7 +319,8 @@ class OpenAIProvider(LLMProvider):
         self,
         api_key: str,
         model: str = "gpt-5-mini",
-        temperature: float = 0
+        temperature: float = 0,
+        base_url: Optional[str] = None
     ):
         """
         Initialize OpenAI provider.
@@ -337,7 +338,10 @@ class OpenAIProvider(LLMProvider):
                 "Install with: pip install openai"
             )
 
-        self.client = OpenAI(api_key=api_key)
+        client_kwargs = {"api_key": api_key}
+        if base_url:
+            client_kwargs["base_url"] = base_url
+        self.client = OpenAI(**client_kwargs)
         self.model = model
         self.temperature = temperature
 
@@ -385,7 +389,8 @@ class OpenAIProvider(LLMProvider):
 
     def _is_gpt5_family(self) -> bool:
         """Check whether the configured model is in the GPT-5 family."""
-        return self.model.lower().startswith("gpt-5")
+        model = self.model.lower()
+        return model.startswith("gpt-5") or "/gpt-5" in model
 
     def chat(
         self,
@@ -748,7 +753,7 @@ def create_provider(
     Factory function to create an LLM provider.
 
     Args:
-        provider: Provider name ('gemini', 'openai', 'claude')
+        provider: Provider name ('gemini', 'openai', 'claude', 'openrouter')
         api_key: API key for the provider
         model: Optional model name (uses default if not specified)
         temperature: Temperature for generation
@@ -777,8 +782,15 @@ def create_provider(
             model=model or "claude-sonnet-4-20250514",
             temperature=temperature
         )
+    elif provider == "openrouter":
+        return OpenAIProvider(
+            api_key=api_key,
+            model=model or "openai/gpt-5-mini",
+            temperature=temperature,
+            base_url="https://openrouter.ai/api/v1"
+        )
     else:
         raise ValueError(
             f"Unknown provider: {provider}. "
-            "Supported providers: 'gemini', 'openai', 'claude'"
+            "Supported providers: 'gemini', 'openai', 'claude', 'openrouter'"
         )

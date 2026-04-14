@@ -80,6 +80,7 @@ def get_provider_from_key_name(key_name: str) -> str:
         "Gemini": "gemini",
         "Claude": "claude",
         "Anthropic": "claude",
+        "OpenRouter": "openrouter",
     }
     # Check for partial matches
     for name, provider in provider_map.items():
@@ -98,6 +99,8 @@ def init_session_state():
         st.session_state.api_key = None
     if "provider" not in st.session_state:
         st.session_state.provider = None
+    if "model" not in st.session_state:
+        st.session_state.model = None
     if "storage_folder" not in st.session_state:
         st.session_state.storage_folder = "Storage/BulkDives"
     if "import_mode" not in st.session_state:
@@ -108,7 +111,12 @@ def init_session_state():
         st.session_state.fit_preview = None
 
 
-def create_agent(api_key: str, provider: str, dive_folder: str = None) -> StatisticsAgent:
+def create_agent(
+    api_key: str,
+    provider: str,
+    model: Optional[str] = None,
+    dive_folder: str = None
+) -> StatisticsAgent:
     """Create or return cached agent."""
     if dive_folder is None:
         dive_folder = st.session_state.storage_folder
@@ -116,18 +124,21 @@ def create_agent(api_key: str, provider: str, dive_folder: str = None) -> Statis
     # Check if we need to create a new agent
     if (st.session_state.agent is None or
         st.session_state.api_key != api_key or
-        st.session_state.provider != provider):
+        st.session_state.provider != provider or
+        st.session_state.model != model):
 
         with st.spinner("Initializing AI agent..."):
             try:
                 agent = StatisticsAgent(
                     api_key=api_key,
                     dive_folder=dive_folder,
-                    provider=provider
+                    provider=provider,
+                    model=model
                 )
                 st.session_state.agent = agent
                 st.session_state.api_key = api_key
                 st.session_state.provider = provider
+                st.session_state.model = model
             except Exception as e:
                 st.error(f"Failed to initialize agent: {str(e)}")
                 return None
@@ -911,9 +922,10 @@ def render_sidebar():
                 "Create a `.env` file in the project root and set one of:\n"
                 "- `OPENAI_API_KEY`\n"
                 "- `GEMINI_API_KEY`\n"
-                "- `ANTHROPIC_API_KEY`"
+                "- `ANTHROPIC_API_KEY`\n"
+                "- `OPENROUTER_API_KEY`"
             )
-            return None, None
+            return None
 
         # Select API provider
         selected_api = st.selectbox(
@@ -924,6 +936,20 @@ def render_sidebar():
 
         api_key = api_keys[selected_api]
         provider = get_provider_from_key_name(selected_api)
+        selected_model = None
+
+        if provider == "openrouter":
+            openrouter_models = {
+                "Gemini 3 Flash": "google/gemini-3-flash-preview",
+                "GPT-5 mini": "openai/gpt-5-mini",
+                "Claude Haiku": "anthropic/claude-3.5-haiku",
+            }
+            selected_model_label = st.selectbox(
+                "OpenRouter model",
+                list(openrouter_models.keys()),
+                help="Pick which routed model to use with your OpenRouter key"
+            )
+            selected_model = openrouter_models[selected_model_label]
 
         st.divider()
 
@@ -932,6 +958,7 @@ def render_sidebar():
             "gemini": ("🔵 Google Gemini", "gemini-1.5-flash"),
             "openai": ("🟢 OpenAI", "gpt-5-mini"),
             "claude": ("🟣 Anthropic Claude", "claude-sonnet-4-20250514"),
+            "openrouter": ("🟠 OpenRouter", selected_model or "openai/gpt-5-mini"),
         }
         info = provider_info.get(provider, ("Unknown", "Unknown"))
         st.caption(f"Using: {info[0]}")
@@ -970,7 +997,7 @@ def render_sidebar():
             - "Who is my most common buddy?"
             """)
 
-        return api_key, provider
+        return api_key, provider, selected_model
 
 
 def render_quick_stats(agent: StatisticsAgent):
@@ -1128,10 +1155,10 @@ def main():
         st.warning("Please configure an API key to continue.")
         return
 
-    api_key, provider = result
+    api_key, provider, model = result
 
     # Create/get agent
-    agent = create_agent(api_key, provider)
+    agent = create_agent(api_key, provider, model=model)
 
     if agent is None:
         st.error("Failed to initialize the agent. Please check your API key.")
