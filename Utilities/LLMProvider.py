@@ -383,6 +383,10 @@ class OpenAIProvider(LLMProvider):
 
         return openai_messages
 
+    def _is_gpt5_family(self) -> bool:
+        """Check whether the configured model is in the GPT-5 family."""
+        return self.model.lower().startswith("gpt-5")
+
     def chat(
         self,
         messages: List[Message],
@@ -402,9 +406,17 @@ class OpenAIProvider(LLMProvider):
         # Make API call
         kwargs = {
             "model": self.model,
-            "messages": openai_messages,
-            "temperature": self.temperature
+            "messages": openai_messages
         }
+        # GPT-5 family currently only supports its default temperature behavior.
+        # Keep explicit temperature for older model families.
+        if not self._is_gpt5_family():
+            kwargs["temperature"] = self.temperature
+        else:
+            _log_event(
+                f"[OpenAI] model '{self.model}' uses default temperature; "
+                "skipping explicit temperature parameter"
+            )
         if openai_tools:
             kwargs["tools"] = openai_tools
 
