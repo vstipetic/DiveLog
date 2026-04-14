@@ -20,6 +20,7 @@ from Utilities.LLMProvider import (
     UserMessage,
     AssistantMessage,
     Message,
+    _log_event,
 )
 from Utilities.ClassUtils.DiveClass import Dive
 from Utilities.Tools.FilterTool import (
@@ -293,9 +294,15 @@ class StatisticsAgent:
                 "using the Add Dive feature."
             )
 
+        _log_event(
+            f"StatisticsAgent.process_query start | dives={len(self.dives)} "
+            f"query='{query.replace(chr(10), ' ')[:120]}'"
+        )
+
         # Clear any previous filter/chart state from prior queries
         ToolState.clear()
         ChartState.clear()
+        _log_event("Cleared ToolState and ChartState")
 
         try:
             # Build system prompt with dive count
@@ -307,6 +314,7 @@ class StatisticsAgent:
                 user_input=query,
                 chat_history=self.chat_history
             )
+            _log_event(f"Agent executor completed | response_chars={len(result)}")
 
             # Update chat history
             self.chat_history.append(UserMessage(query))
@@ -316,10 +324,14 @@ class StatisticsAgent:
             if len(self.chat_history) > 20:
                 self.chat_history = self.chat_history[-20:]
 
+            _log_event(
+                f"StatisticsAgent.process_query success | chat_history_len={len(self.chat_history)}"
+            )
             return result
 
         except Exception as e:
             error_msg = f"Error processing query: {str(e)}"
+            _log_event(f"StatisticsAgent.process_query failed: {str(e)}")
             print(error_msg)
             return error_msg
 

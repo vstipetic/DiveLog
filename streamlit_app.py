@@ -930,7 +930,7 @@ def render_sidebar():
         # Show current provider info
         provider_info = {
             "gemini": ("🔵 Google Gemini", "gemini-1.5-flash"),
-            "openai": ("🟢 OpenAI", "gpt-4o-mini"),
+            "openai": ("🟢 OpenAI", "gpt-5-mini"),
             "claude": ("🟣 Anthropic Claude", "claude-sonnet-4-20250514"),
         }
         info = provider_info.get(provider, ("Unknown", "Unknown"))

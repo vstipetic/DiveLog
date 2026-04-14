@@ -16,9 +16,16 @@ import json
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Type
 
 from pydantic import BaseModel, ConfigDict
+
+
+def _log_event(message: str) -> None:
+    """Print a timestamped debug log line for agent execution."""
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[LLM {timestamp}] {message}", flush=True)
 
 
 # =============================================================================
@@ -264,10 +271,15 @@ class GeminiProvider(LLMProvider):
         )
 
         # Generate response
+        _log_event(
+            f"[Gemini] request sent to API | messages={len(messages)} "
+            f"converted_parts={len(contents)} tools={len(tools or [])}"
+        )
         response = model.generate_content(
             contents,
             generation_config={"temperature": self.temperature}
         )
+        _log_event("[Gemini] response received from API")
 
         # Parse response
         if not response.candidates:
@@ -306,7 +318,7 @@ class OpenAIProvider(LLMProvider):
     def __init__(
         self,
         api_key: str,
-        model: str = "gpt-4o-mini",
+        model: str = "gpt-5-mini",
         temperature: float = 0
     ):
         """
@@ -314,7 +326,7 @@ class OpenAIProvider(LLMProvider):
 
         Args:
             api_key: OpenAI API key
-            model: Model name (default: gpt-4o-mini)
+            model: Model name (default: gpt-5-mini)
             temperature: Temperature for generation (default: 0)
         """
         try:
@@ -396,7 +408,30 @@ class OpenAIProvider(LLMProvider):
         if openai_tools:
             kwargs["tools"] = openai_tools
 
+        request_id = uuid.uuid4().hex[:8]
+        role_sequence = [m.get("role", "?") for m in openai_messages]
+        content_chars = 0
+        for m in openai_messages:
+            content = m.get("content")
+            if isinstance(content, str):
+                content_chars += len(content)
+        _log_event(
+            f"[OpenAI][{request_id}] payload ready | roles={role_sequence} "
+            f"content_chars={content_chars} tool_defs={len(openai_tools or [])}"
+        )
+        _log_event(
+            f"[OpenAI][{request_id}] request sent to API | messages={len(messages)} "
+            f"converted_messages={len(openai_messages)} tools={len(tools or [])}"
+        )
         response = self.client.chat.completions.create(**kwargs)
+        usage = getattr(response, "usage", None)
+        finish_reason = None
+        if getattr(response, "choices", None):
+            finish_reason = response.choices[0].finish_reason
+        _log_event(
+            f"[OpenAI][{request_id}] response received from API | "
+            f"finish_reason={finish_reason} usage={usage}"
+        )
 
         # Parse response
         message = response.choices[0].message
@@ -533,7 +568,12 @@ class AnthropicProvider(LLMProvider):
         if anthropic_tools:
             kwargs["tools"] = anthropic_tools
 
+        _log_event(
+            f"[Anthropic] request sent to API | messages={len(messages)} "
+            f"converted_messages={len(anthropic_messages)} tools={len(tools or [])}"
+        )
         response = self.client.messages.create(**kwargs)
+        _log_event("[Anthropic] response received from API")
 
         # Parse response
         text_content = ""
@@ -611,16 +651,34 @@ class AgentExecutor:
             messages.extend(chat_history)
 
         messages.append(UserMessage(user_input))
+        preview = user_input.replace("\n", " ")[:120]
+        _log_event(
+            f"AgentExecutor.run start | input='{preview}' | "
+            f"history_messages={len(chat_history or [])} | max_iterations={self.max_iterations}"
+        )
 
         for iteration in range(self.max_iterations):
+            _log_event(
+                f"Iteration {iteration + 1} start | message_count={len(messages)}"
+            )
             if self.verbose:
                 print(f"\n[Iteration {iteration + 1}] Calling LLM...")
 
             # Call LLM
-            response = self.provider.chat(messages, self.tool_list)
+            try:
+                response = self.provider.chat(messages, self.tool_list)
+            except Exception as e:
+                _log_event(f"Provider call failed: {str(e)}")
+                raise
+
+            _log_event(
+                f"Iteration {iteration + 1} response | tool_calls={len(response.tool_calls)} "
+                f"content_chars={len(response.content or '')}"
+            )
 
             # Check if we have a final answer (no tool calls)
             if not response.tool_calls:
+                _log_event(f"Final answer reached on iteration {iteration + 1}")
                 if self.verbose:
                     print(f"[Final Answer] {response.content[:200]}...")
                 return response.content
@@ -637,10 +695,19 @@ class AgentExecutor:
                 tool = self.tools.get(tool_call.name)
                 if tool is None:
                     result = f"Error: Unknown tool '{tool_call.name}'"
+                    _log_event(f"Tool lookup failed | name={tool_call.name}")
                 else:
+                    _log_event(
+                        f"Running tool '{tool_call.name}' "
+                        f"with args={list(tool_call.arguments.keys())}"
+                    )
                     try:
                         result = tool.run(**tool_call.arguments)
+                        _log_event(
+                            f"Tool '{tool_call.name}' completed | result_chars={len(result)}"
+                        )
                     except Exception as e:
+                        _log_event(f"Tool '{tool_call.name}' failed: {str(e)}")
                         result = f"Error executing tool: {str(e)}"
 
                 if self.verbose:
@@ -651,6 +718,7 @@ class AgentExecutor:
                 messages.append(ToolResultMessage(tool_call.id, result))
 
         # Max iterations reached
+        _log_event("Max iterations reached without final answer")
         return "I apologize, but I couldn't complete the task within the allowed number of iterations."
 
 
@@ -677,6 +745,7 @@ def create_provider(
         LLMProvider instance
     """
     provider = provider.lower()
+    _log_event(f"Creating provider '{provider}' with model='{model or 'default'}'")
 
     if provider == "gemini":
         return GeminiProvider(
@@ -687,7 +756,7 @@ def create_provider(
     elif provider == "openai":
         return OpenAIProvider(
             api_key=api_key,
-            model=model or "gpt-4o-mini",
+            model=model or "gpt-5-mini",
             temperature=temperature
         )
     elif provider == "claude":
