@@ -1,12 +1,12 @@
 """
 AI-powered statistics agent for natural language dive queries.
 
-This module provides a LangChain-based agent that can answer natural language
+This module provides an agent that can answer natural language
 questions about dive statistics using a set of specialized tools.
 
 Supported LLM providers:
 - Gemini (Google)
-- OpenAI (GPT-5)
+- OpenAI (GPT)
 - Anthropic (Claude)
 """
 
@@ -14,10 +14,13 @@ import pickle
 from pathlib import Path
 from typing import List, Optional
 
-from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import AIMessage, HumanMessage
-
+from Utilities.LLMProvider import (
+    create_provider,
+    AgentExecutor,
+    UserMessage,
+    AssistantMessage,
+    Message,
+)
 from Utilities.ClassUtils.DiveClass import Dive
 from Utilities.Tools.FilterTool import (
     FilterDivesByDepthTool,
@@ -176,7 +179,9 @@ class StatisticsAgent:
         self,
         api_key: str,
         dive_folder: str = "Storage/Dives",
-        provider: str = "gemini"
+        provider: str = "gemini",
+        model: Optional[str] = None,
+        verbose: bool = False
     ):
         """Initialize the statistics agent.
 
@@ -184,23 +189,27 @@ class StatisticsAgent:
             api_key: API key for LLM provider
             dive_folder: Path to folder containing dive pickle files
             provider: LLM provider ('gemini', 'openai', or 'claude')
+            model: Optional model name (uses default for provider if not specified)
+            verbose: If True, print debug information during execution
         """
         self.api_key = api_key
         self.dive_folder = Path(dive_folder)
         self.provider = provider
+        self.model = model
+        self.verbose = verbose
         self.dives: List[Dive] = []
-        self.chat_history: List = []
+        self.chat_history: List[Message] = []
 
         # Load dives
         self._load_dives()
 
-        # Initialize LLM
-        self.llm = self._create_llm()
+        # Initialize LLM provider
+        self.llm_provider = self._create_llm()
 
         # Initialize tools
         self.tools = self._create_tools()
 
-        # Create agent
+        # Create agent executor
         self.agent_executor = self._create_agent()
 
     def _load_dives(self) -> None:
@@ -222,55 +231,13 @@ class StatisticsAgent:
         print(f"Loaded {len(self.dives)} dives from {self.dive_folder}")
 
     def _create_llm(self):
-        """Create LLM instance based on provider."""
-        if self.provider == "gemini":
-            try:
-                from langchain_google_genai import ChatGoogleGenerativeAI
-                return ChatGoogleGenerativeAI(
-                    model="gemini-2.5-flash",
-                    google_api_key=self.api_key,
-                    temperature=0,
-                    convert_system_message_to_human=True
-                )
-            except ImportError:
-                raise ImportError(
-                    "langchain-google-genai is required for Gemini. "
-                    "Install with: pip install langchain-google-genai"
-                )
-
-        elif self.provider == "openai":
-            try:
-                from langchain_openai import ChatOpenAI
-                return ChatOpenAI(
-                    model="gpt-5-mini",
-                    api_key=self.api_key,
-                    temperature=1
-                )
-            except ImportError:
-                raise ImportError(
-                    "langchain-openai is required for OpenAI. "
-                    "Install with: pip install langchain-openai"
-                )
-
-        elif self.provider == "claude":
-            try:
-                from langchain_anthropic import ChatAnthropic
-                return ChatAnthropic(
-                    model="claude-sonnet-4-20250514",
-                    api_key=self.api_key,
-                    temperature=0
-                )
-            except ImportError:
-                raise ImportError(
-                    "langchain-anthropic is required for Claude. "
-                    "Install with: pip install langchain-anthropic"
-                )
-
-        else:
-            raise ValueError(
-                f"Unknown provider: {self.provider}. "
-                "Supported providers: 'gemini', 'openai', 'claude'"
-            )
+        """Create LLM provider instance."""
+        return create_provider(
+            provider=self.provider,
+            api_key=self.api_key,
+            model=self.model,
+            temperature=0
+        )
 
     def _create_tools(self):
         """Create tool instances with dive data."""
@@ -303,22 +270,12 @@ class StatisticsAgent:
         ]
 
     def _create_agent(self):
-        """Create LangChain agent with tools."""
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", SYSTEM_PROMPT),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad")
-        ])
-
-        agent = create_tool_calling_agent(self.llm, self.tools, prompt)
-
+        """Create agent executor with tools."""
         return AgentExecutor(
-            agent=agent,
+            provider=self.llm_provider,
             tools=self.tools,
-            verbose=True,
-            handle_parsing_errors=True,
-            max_iterations=50
+            max_iterations=50,
+            verbose=self.verbose
         )
 
     def process_query(self, query: str) -> str:
@@ -341,21 +298,25 @@ class StatisticsAgent:
         ChartState.clear()
 
         try:
-            result = self.agent_executor.invoke({
-                "input": query,
-                "num_dives": len(self.dives),
-                "chat_history": self.chat_history
-            })
+            # Build system prompt with dive count
+            system_prompt = SYSTEM_PROMPT.format(num_dives=len(self.dives))
+
+            # Run agent
+            result = self.agent_executor.run(
+                system_prompt=system_prompt,
+                user_input=query,
+                chat_history=self.chat_history
+            )
 
             # Update chat history
-            self.chat_history.append(HumanMessage(content=query))
-            self.chat_history.append(AIMessage(content=result["output"]))
+            self.chat_history.append(UserMessage(query))
+            self.chat_history.append(AssistantMessage(result))
 
             # Keep chat history manageable
             if len(self.chat_history) > 20:
                 self.chat_history = self.chat_history[-20:]
 
-            return result["output"]
+            return result
 
         except Exception as e:
             error_msg = f"Error processing query: {str(e)}"
@@ -364,10 +325,10 @@ class StatisticsAgent:
 
     def clear_history(self) -> None:
         """Clear the chat history."""
-        self.chat_history = []
+        self.chat_history: List[Message] = []
 
     def reload_dives(self) -> None:
-        """Reload dives from storage and recreate tools."""
+        """Reload dives from storage and recreate tools and agent."""
         self._load_dives()
         self.tools = self._create_tools()
         self.agent_executor = self._create_agent()

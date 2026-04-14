@@ -1,8 +1,8 @@
 """
-LangChain tools for filtering dives.
+Tools for filtering dives.
 
 These tools wrap the existing FilterFunctions to provide
-LangChain-compatible interfaces with Pydantic validation.
+validated interfaces with Pydantic validation.
 
 IMPORTANT: All filter tools store their results in ToolState, making
 the filtered dives available to subsequent statistics tools.
@@ -10,8 +10,9 @@ the filtered dives available to subsequent statistics tools.
 
 from typing import List, Optional, Type
 from datetime import datetime, time
-from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field, ConfigDict
+
+from Utilities.LLMProvider import Tool
 
 from Utilities.ClassUtils.DiveClass import Dive
 from Utilities.Schemas.ToolOutputs import FilterResult, DiveSummary
@@ -45,7 +46,7 @@ class FilterDivesByDepthInput(BaseModel):
     )
 
 
-class FilterDivesByDepthTool(BaseTool):
+class FilterDivesByDepthTool(Tool):
     """Filter dives by depth range."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -62,7 +63,7 @@ class FilterDivesByDepthTool(BaseTool):
 
     dives: List[Dive] = Field(default_factory=list)
 
-    def _run(
+    def run(
         self,
         min_depth: Optional[float] = None,
         max_depth: Optional[float] = None
@@ -178,7 +179,7 @@ class FilterDivesByDateInput(BaseModel):
     )
 
 
-class FilterDivesByDateTool(BaseTool):
+class FilterDivesByDateTool(Tool):
     """Filter dives by date range."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -193,7 +194,7 @@ class FilterDivesByDateTool(BaseTool):
 
     dives: List[Dive] = Field(default_factory=list)
 
-    def _run(
+    def run(
         self,
         start_date: str,
         end_date: Optional[str] = None
@@ -302,7 +303,7 @@ class FilterDivesByDurationInput(BaseModel):
     )
 
 
-class FilterDivesByDurationTool(BaseTool):
+class FilterDivesByDurationTool(Tool):
     """Filter dives by duration."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -317,7 +318,7 @@ class FilterDivesByDurationTool(BaseTool):
 
     dives: List[Dive] = Field(default_factory=list)
 
-    def _run(
+    def run(
         self,
         min_duration_minutes: Optional[float] = None,
         max_duration_minutes: Optional[float] = None
@@ -395,7 +396,7 @@ class FilterDivesByBuddyInput(BaseModel):
     )
 
 
-class FilterDivesByBuddyTool(BaseTool):
+class FilterDivesByBuddyTool(Tool):
     """Filter dives by dive buddy."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -410,7 +411,7 @@ class FilterDivesByBuddyTool(BaseTool):
 
     dives: List[Dive] = Field(default_factory=list)
 
-    def _run(self, buddy_name: str) -> str:
+    def run(self, buddy_name: str) -> str:
         """Filter dives by buddy and return formatted result."""
         filtered = [d for d in self.dives if dive_had_buddy(d, buddy_name)]
 
@@ -457,7 +458,7 @@ class FilterDivesByLocationInput(BaseModel):
     )
 
 
-class FilterDivesByLocationTool(BaseTool):
+class FilterDivesByLocationTool(Tool):
     """Filter dives by location."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -472,7 +473,7 @@ class FilterDivesByLocationTool(BaseTool):
 
     dives: List[Dive] = Field(default_factory=list)
 
-    def _run(self, location_name: str) -> str:
+    def run(self, location_name: str) -> str:
         """Filter dives by location and return formatted result."""
         filtered = [d for d in self.dives if dive_was_at_location(d, location_name)]
 
@@ -528,7 +529,7 @@ class FilterDivesByStartTimeInput(BaseModel):
     )
 
 
-class FilterDivesByStartTimeTool(BaseTool):
+class FilterDivesByStartTimeTool(Tool):
     """Filter dives by time of day they started."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -545,7 +546,7 @@ class FilterDivesByStartTimeTool(BaseTool):
 
     dives: List[Dive] = Field(default_factory=list)
 
-    def _run(
+    def run(
         self,
         start_after: Optional[str] = None,
         start_before: Optional[str] = None
@@ -648,7 +649,7 @@ class FilterDivesByTemperatureInput(BaseModel):
     )
 
 
-class FilterDivesByTemperatureTool(BaseTool):
+class FilterDivesByTemperatureTool(Tool):
     """Filter dives by water temperature."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -664,7 +665,7 @@ class FilterDivesByTemperatureTool(BaseTool):
 
     dives: List[Dive] = Field(default_factory=list)
 
-    def _run(
+    def run(
         self,
         min_temp: Optional[float] = None,
         max_temp: Optional[float] = None
@@ -751,7 +752,7 @@ class FilterDivesByCNSLoadInput(BaseModel):
     )
 
 
-class FilterDivesByCNSLoadTool(BaseTool):
+class FilterDivesByCNSLoadTool(Tool):
     """Filter dives by CNS oxygen toxicity load."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -767,7 +768,7 @@ class FilterDivesByCNSLoadTool(BaseTool):
 
     dives: List[Dive] = Field(default_factory=list)
 
-    def _run(self, max_cns_load: float) -> str:
+    def run(self, max_cns_load: float) -> str:
         """Filter dives by CNS load and return formatted result."""
         filtered = []
         for dive in self.dives:
@@ -830,7 +831,7 @@ class FilterDivesByGasTypeInput(BaseModel):
     )
 
 
-class FilterDivesByGasTypeTool(BaseTool):
+class FilterDivesByGasTypeTool(Tool):
     """Filter dives by breathing gas type."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -844,7 +845,7 @@ class FilterDivesByGasTypeTool(BaseTool):
 
     dives: List[Dive] = Field(default_factory=list)
 
-    def _run(self, gas_type: str) -> str:
+    def run(self, gas_type: str) -> str:
         """Filter dives by gas type and return formatted result."""
         gas_type_lower = gas_type.lower().strip()
         valid_types = ['air', 'nitrox', 'trimix']
@@ -899,7 +900,7 @@ class FilterDivesByDurationAtDepthInput(BaseModel):
     )
 
 
-class FilterDivesByDurationAtDepthTool(BaseTool):
+class FilterDivesByDurationAtDepthTool(Tool):
     """
     Filter dives by continuous time spent at or below a specific depth.
 
@@ -961,7 +962,7 @@ class FilterDivesByDurationAtDepthTool(BaseTool):
 
         return False
 
-    def _run(self, min_depth: float, min_duration: float) -> str:
+    def run(self, min_depth: float, min_duration: float) -> str:
         """Filter dives by continuous time at depth."""
         if not self.dives:
             return "No dives available to filter."
@@ -1016,7 +1017,7 @@ class LabelFilteredDivesInput(BaseModel):
     )
 
 
-class LabelFilteredDivesTool(BaseTool):
+class LabelFilteredDivesTool(Tool):
     """
     Assign a label to the currently filtered dives for use in grouped scatter plots.
 
@@ -1042,7 +1043,7 @@ class LabelFilteredDivesTool(BaseTool):
     )
     args_schema: Type[BaseModel] = LabelFilteredDivesInput
 
-    def _run(self, label: str) -> str:
+    def run(self, label: str) -> str:
         """Store the currently filtered dives with the given label."""
         if not ToolState.has_filtered_dives():
             return (

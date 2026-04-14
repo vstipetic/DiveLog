@@ -1,5 +1,5 @@
 """
-LangChain tool for searching dives.
+Tool for searching dives.
 
 This tool provides text-based search capabilities for finding dives
 by location, buddy, or description.
@@ -9,8 +9,9 @@ the found dives available to subsequent statistics tools.
 """
 
 from typing import List, Type
-from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field, ConfigDict
+
+from Utilities.LLMProvider import Tool
 
 from Utilities.ClassUtils.DiveClass import Dive
 from Utilities.Schemas.ToolOutputs import FilterResult, DiveSummary
@@ -28,7 +29,7 @@ class SearchDivesInput(BaseModel):
     )
 
 
-class SearchDivesTool(BaseTool):
+class SearchDivesTool(Tool):
     """Search dives by text in various fields.
 
     This tool automatically stores search results in ToolState, making
@@ -48,7 +49,7 @@ class SearchDivesTool(BaseTool):
 
     dives: List[Dive] = Field(default_factory=list)
 
-    def _run(self, query: str, search_field: str) -> str:
+    def run(self, query: str, search_field: str) -> str:
         """Search dives and return formatted result."""
         search_field = search_field.lower()
 
@@ -121,7 +122,7 @@ class GetDiveSummaryInput(BaseModel):
     )
 
 
-class GetDiveSummaryTool(BaseTool):
+class GetDiveSummaryTool(Tool):
     """Get detailed summary of a specific dive."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -135,7 +136,7 @@ class GetDiveSummaryTool(BaseTool):
 
     dives: List[Dive] = Field(default_factory=list)
 
-    def _run(self, dive_index: int) -> str:
+    def run(self, dive_index: int) -> str:
         """Get dive summary and return formatted result."""
         if dive_index < 0 or dive_index >= len(self.dives):
             return f"Invalid dive index: {dive_index}. Valid range: 0 to {len(self.dives) - 1}"
@@ -203,7 +204,7 @@ class ListAllDivesInput(BaseModel):
     )
 
 
-class ListAllDivesTool(BaseTool):
+class ListAllDivesTool(Tool):
     """List all dives with sorting options."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -217,7 +218,7 @@ class ListAllDivesTool(BaseTool):
 
     dives: List[Dive] = Field(default_factory=list)
 
-    def _run(self, limit: int = 10, sort_by: str = "date") -> str:
+    def run(self, limit: int = 10, sort_by: str = "date") -> str:
         """List dives and return formatted result."""
         if not self.dives:
             return "No dives in the log."

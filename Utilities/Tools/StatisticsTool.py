@@ -1,7 +1,7 @@
 """
-LangChain tool for calculating dive statistics.
+Tool for calculating dive statistics.
 
-This tool wraps the StatisticsFunctions to provide a LangChain-compatible
+This tool wraps the StatisticsFunctions to provide a validated
 interface for calculating various statistics about dives.
 
 IMPORTANT: These tools check ToolState for filtered dives first. If a filter
@@ -10,8 +10,9 @@ on the filtered subset. Otherwise, statistics are calculated on all dives.
 """
 
 from typing import List, Type
-from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field, ConfigDict
+
+from Utilities.LLMProvider import Tool
 
 from Utilities.ClassUtils.DiveClass import Dive
 from Utilities.Schemas.ToolOutputs import StatisticsResult
@@ -36,7 +37,7 @@ class CalculateStatisticInput(BaseModel):
     )
 
 
-class CalculateStatisticTool(BaseTool):
+class CalculateStatisticTool(Tool):
     """
     Calculate statistics about dives.
 
@@ -71,7 +72,7 @@ class CalculateStatisticTool(BaseTool):
     # All dives (fallback when no filter applied)
     all_dives: List[Dive] = Field(default_factory=list)
 
-    def _run(self, stat_type: str) -> str:
+    def run(self, stat_type: str) -> str:
         """Calculate the requested statistic and return formatted result."""
         # Check if there are filtered dives from a previous filter tool
         if ToolState.has_filtered_dives():
@@ -115,7 +116,7 @@ class CalculateTimeBelowDepthInput(BaseModel):
     )
 
 
-class CalculateTimeBelowDepthTool(BaseTool):
+class CalculateTimeBelowDepthTool(Tool):
     """
     Calculate time spent below a specific depth.
 
@@ -136,7 +137,7 @@ class CalculateTimeBelowDepthTool(BaseTool):
     # All dives (fallback when no filter applied)
     all_dives: List[Dive] = Field(default_factory=list)
 
-    def _run(self, depth_threshold: float) -> str:
+    def run(self, depth_threshold: float) -> str:
         """Calculate time below depth and return formatted result."""
         # Check if there are filtered dives from a previous filter tool
         if ToolState.has_filtered_dives():

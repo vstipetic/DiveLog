@@ -1,5 +1,5 @@
 """
-LangChain tools for creating dive data visualizations.
+Tools for creating dive data visualizations.
 
 These tools create Altair charts and store them in ChartState for
 Streamlit to render alongside text responses.
@@ -10,10 +10,11 @@ generated from the filtered subset; otherwise from all dives.
 
 import math
 from typing import Dict, List, Optional, Type
-from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field, ConfigDict
 import pandas as pd
 import altair as alt
+
+from Utilities.LLMProvider import Tool
 
 from Utilities.ClassUtils.DiveClass import Dive
 from Utilities.Tools.ToolState import ToolState
@@ -92,7 +93,7 @@ def _get_target_dives(all_dives: List[Dive]) -> tuple[List[Dive], str]:
     return target_dives, context
 
 
-class PlotHistogramTool(BaseTool):
+class PlotHistogramTool(Tool):
     """
     Create a histogram showing the distribution of a dive metric.
 
@@ -118,7 +119,7 @@ class PlotHistogramTool(BaseTool):
 
     all_dives: List[Dive] = Field(default_factory=list)
 
-    def _run(self, metric: str, bin_count: Optional[int] = 10) -> str:
+    def run(self, metric: str, bin_count: Optional[int] = 10) -> str:
         """Create histogram and store in ChartState."""
         metric = metric.lower()
         if metric not in VALID_METRICS:
@@ -172,7 +173,7 @@ class PlotHistogramTool(BaseTool):
         return f"Created histogram of {metric} distribution. {context}. Showing {len(values)} data points."
 
 
-class PlotBarChartTool(BaseTool):
+class PlotBarChartTool(Tool):
     """
     Create a bar chart showing dive counts grouped by category.
 
@@ -197,7 +198,7 @@ class PlotBarChartTool(BaseTool):
 
     all_dives: List[Dive] = Field(default_factory=list)
 
-    def _run(
+    def run(
         self,
         category_by: Optional[str] = None,
         custom_data: Optional[Dict[str, int]] = None,
@@ -313,7 +314,7 @@ class PlotBarChartTool(BaseTool):
         return f"Created bar chart showing dives by {category_by}. {context}. Found {len(counts)} categories."
 
 
-class PlotPieChartTool(BaseTool):
+class PlotPieChartTool(Tool):
     """
     Create a pie chart showing proportional breakdown of dives.
 
@@ -338,7 +339,7 @@ class PlotPieChartTool(BaseTool):
 
     all_dives: List[Dive] = Field(default_factory=list)
 
-    def _run(
+    def run(
         self,
         category_by: Optional[str] = None,
         custom_data: Optional[Dict[str, int]] = None,
@@ -453,7 +454,7 @@ class PlotPieChartTool(BaseTool):
         return f"Created pie chart showing dives by {category_by}. {context}. Found {len(counts)} categories."
 
 
-class PlotScatterTool(BaseTool):
+class PlotScatterTool(Tool):
     """
     Create a scatter plot showing relationship between two metrics.
 
@@ -483,7 +484,7 @@ class PlotScatterTool(BaseTool):
 
     all_dives: List[Dive] = Field(default_factory=list)
 
-    def _run(
+    def run(
         self,
         x_metric: str,
         y_metric: str,
