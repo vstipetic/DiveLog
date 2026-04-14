@@ -52,21 +52,21 @@ cd DiveLog
 uv sync
 ```
 
-3. Set up an API key for AI features (at least one required):
-```bash
-# Option 1: Google Gemini (recommended - free tier available)
-export GEMINI_API_KEY="your-gemini-api-key"
-
-# Option 2: OpenAI
-export OPENAI_API_KEY="your-openai-api-key"
-
-# Option 3: Anthropic Claude
-export ANTHROPIC_API_KEY="your-anthropic-api-key"
+3. Set up an API key for AI features (at least one required) using a local `.env` file:
+```powershell
+copy .env.example .env
 ```
 
-On Windows (PowerShell):
-```powershell
-$env:GEMINI_API_KEY="your-gemini-api-key"
+Then edit `.env` and set one or more keys:
+```env
+# Option 1: Google Gemini (recommended - free tier available)
+GEMINI_API_KEY=your-gemini-api-key
+
+# Option 2: OpenAI
+OPENAI_API_KEY=your-openai-api-key
+
+# Option 3: Anthropic Claude
+ANTHROPIC_API_KEY=your-anthropic-api-key
 ```
 
 ## Usage
@@ -132,6 +132,8 @@ DiveLog requires an LLM API key for AI features. Get one from:
 - [Google AI Studio](https://aistudio.google.com/) - Gemini (free tier available)
 - [OpenAI](https://platform.openai.com/) - GPT-4
 - [Anthropic](https://console.anthropic.com/) - Claude
+
+The app reads keys from the project-root `.env` file (loaded at runtime). It no longer depends on shell-exported environment variables.
 
 ## License
 

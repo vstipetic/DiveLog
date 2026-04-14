@@ -908,7 +908,7 @@ def render_sidebar():
         if not api_keys:
             st.error("No API keys found!")
             st.info(
-                "Set one of these environment variables:\n"
+                "Create a `.env` file in the project root and set one of:\n"
                 "- `OPENAI_API_KEY`\n"
                 "- `GEMINI_API_KEY`\n"
                 "- `ANTHROPIC_API_KEY`"
