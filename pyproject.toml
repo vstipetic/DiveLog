@@ -18,6 +18,8 @@ dependencies = [
     "anthropic>=0.40.0",
     # Load API keys from local .env files
     "python-dotenv>=1.0.0",
+    # Garmin Connect integration (download dive .fit files directly)
+    "garminconnect>=0.2.0",
     # Streamlit for UI
     "streamlit>=1.40.0,<2.0.0",
     # Data visualization

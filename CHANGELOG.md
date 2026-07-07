@@ -2,6 +2,24 @@
 
 All notable changes to DiveLog are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+**Import from Garmin Connect**
+- New "Import from Garmin" mode in the Import Dives tab: log into your Garmin
+  Connect account and download dive `.fit` files directly, instead of manually
+  exporting them.
+- Uses the unofficial `garminconnect` library (mobile-SSO OAuth, same as the
+  Garmin app). Supports multi-factor authentication.
+- Login token is cached under `Storage/.garmin_tokens/`, so password/MFA are
+  only needed on first login (auto-refreshed afterwards).
+- Optional `GARMIN_EMAIL` / `GARMIN_PASSWORD` in `.env` pre-fill the login form.
+- Pick a date range, select from the list of diving activities, and import.
+  Already-imported dives are detected (by activity id) and skipped.
+- Downloaded dives feed the existing parser, so they carry the same
+  auto-extracted data as Bulk Import (no buddy/gear/pressure — enrich later).
+
 ## [1.0.0] - 2024-12-24
 
 ### Added

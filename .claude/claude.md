@@ -67,6 +67,16 @@ The application follows a modular architecture with clear separation of concerns
 - Output: `Dive` objects with auto-extracted metadata in `Storage/BulkDives/`
 - Use when: Quick statistical analysis of large dive collections
 
+**Import from Garmin** (via Streamlit "Import Dives" tab → `Utilities/GarminConnectClient.py`):
+- Logs into Garmin Connect and downloads dive `.fit` files directly — no manual export needed
+- Uses the unofficial `garminconnect` library (mobile-SSO OAuth, same flow as the Garmin app; supports MFA)
+- Login token cached under `Storage/.garmin_tokens/` (git-ignored); password/MFA only needed on first login
+- Optional `GARMIN_EMAIL` / `GARMIN_PASSWORD` in `.env` pre-fill the login form (detected via `detect_garmin_credentials()`)
+- Flow: `begin_login()`/`finish_mfa()` → `list_dives()` (filters activities client-side on `activityType.typeKey` containing "diving") → `download_fit()` (extracts the `.fit` from Garmin's ORIGINAL zip) → existing `parse_garmin_dive()`
+- Dedup: `already_imported()` skips dives whose `activityId` pickle/`.fit` already exists in the storage folder
+- Empty fields: same as Bulk Import (no buddy/gear/pressures) — enrich later via Single Dive import
+- Use when: Pulling dives straight from Garmin without touching Garmin Express
+
 ### .fit File Auto-Extraction
 
 The parser (`GarminDiveParser.py`) extracts extensive data from Garmin .fit files:

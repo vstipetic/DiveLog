@@ -25,6 +25,7 @@ Generate charts from natural language:
 Parse dive data from Garmin dive computers:
 - **Single dive import**: Full metadata with auto-extraction preview
 - **Bulk import**: Quick import of multiple files for statistical analysis
+- **Import from Garmin**: Log into Garmin Connect and download dive files directly (no manual export)
 - Auto-extracts GPS coordinates, gas type, depth profiles, temperatures
 
 ### Gear Tracking
@@ -69,6 +70,15 @@ OPENAI_API_KEY=your-openai-api-key
 ANTHROPIC_API_KEY=your-anthropic-api-key
 ```
 
+Optionally, to pre-fill the "Import from Garmin" login form, add your Garmin
+Connect credentials to the same `.env` (these are optional — you can also type
+them into the UI):
+
+```bash
+GARMIN_EMAIL=you@example.com
+GARMIN_PASSWORD=your-garmin-password
+```
+
 ## Usage
 
 ### Running the Application
@@ -101,6 +111,13 @@ Import dives from Garmin .fit files:
 - Preview files before import
 - Import all files automatically with progress tracking
 - View extraction summary
+
+**Import from Garmin Mode:**
+- Log into your Garmin Connect account (multi-factor auth supported)
+- Uses the unofficial `garminconnect` library — the same login flow as the Garmin app
+- Login token is cached under `Storage/.garmin_tokens/`, so you only enter your password (and MFA code) once
+- Optionally pre-fill credentials with `GARMIN_EMAIL` / `GARMIN_PASSWORD` in `.env`
+- Choose a date range, pick from your diving activities, and import — already-imported dives are skipped
 
 ### Add Gear Tab
 Create and manage your diving equipment:

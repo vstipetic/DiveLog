@@ -50,4 +50,30 @@ def detect_api_keys() -> Dict[str, str]:
     if openrouter_key:
         available_apis["OpenRouter"] = openrouter_key
 
-    return available_apis 
+    return available_apis
+
+
+def detect_garmin_credentials() -> Dict[str, str]:
+    """
+    Scans project .env files for Garmin Connect credentials.
+
+    Reads GARMIN_EMAIL / GARMIN_PASSWORD from the same .env files as the LLM
+    API keys. These are optional convenience defaults for the "Import from
+    Garmin" UI - after the first login a token is cached to disk, so the
+    password is not needed on subsequent runs.
+
+    Returns:
+        Dict[str, str]: keys 'email' and/or 'password' when present.
+    """
+    env_values = _load_env_values()
+    credentials: Dict[str, str] = {}
+
+    email = env_values.get("GARMIN_EMAIL")
+    if email:
+        credentials["email"] = email
+
+    password = env_values.get("GARMIN_PASSWORD")
+    if password:
+        credentials["password"] = password
+
+    return credentials

@@ -13,11 +13,12 @@ import pickle
 import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from Utilities.StatisticsAgent import StatisticsAgent
-from Utilities.APIKeyDetector import detect_api_keys
+from Utilities.APIKeyDetector import detect_api_keys, detect_garmin_credentials
 from Utilities.Tools.ChartState import ChartState
+from Utilities import GarminConnectClient
 from Utilities.Parsers.GarminDiveParser import parse_garmin_dive, get_fit_file_metadata
 from Utilities.AddDive import add_dive, bulk_add_dives, preview_fit_file
 from Utilities.ClassUtils.GearClasses import Gear, Mask, Suit, Gloves, Boots, BCD, Fins, GloveSize
@@ -109,6 +110,12 @@ def init_session_state():
         st.session_state.import_messages = []
     if "fit_preview" not in st.session_state:
         st.session_state.fit_preview = None
+    if "garmin_client" not in st.session_state:
+        st.session_state.garmin_client = None
+    if "garmin_mfa_state" not in st.session_state:
+        st.session_state.garmin_mfa_state = None
+    if "garmin_dive_list" not in st.session_state:
+        st.session_state.garmin_dive_list = None
 
 
 def create_agent(
@@ -255,11 +262,16 @@ def render_import_tab():
 
     # Import mode selection
     st.subheader("Import Mode")
+    import_modes = ["Single Dive", "Bulk Import", "Import from Garmin"]
+    try:
+        current_index = import_modes.index(st.session_state.import_mode)
+    except ValueError:
+        current_index = 0
     import_mode = st.radio(
         "Select import mode:",
-        ["Single Dive", "Bulk Import"],
+        import_modes,
         horizontal=True,
-        index=0 if st.session_state.import_mode == "Single Dive" else 1
+        index=current_index
     )
     st.session_state.import_mode = import_mode
 
@@ -267,8 +279,10 @@ def render_import_tab():
 
     if import_mode == "Single Dive":
         render_single_dive_import()
-    else:
+    elif import_mode == "Bulk Import":
         render_bulk_import()
+    else:
+        render_garmin_import()
 
     st.divider()
 
@@ -725,6 +739,228 @@ def render_bulk_import():
         # Refresh agent
         refresh_agent()
         st.success("Agent cache cleared. New dives will be loaded on next query.")
+
+
+def render_garmin_import():
+    """Render the 'Import from Garmin' interface: log in, list dives, download."""
+    st.subheader("Import from Garmin Connect")
+
+    st.markdown("""
+    <div class="manual-input">
+    <strong>ℹ️ Unofficial Garmin Connect API</strong><br>
+    This logs into your Garmin account using the same flow as the mobile app
+    (via the <code>garminconnect</code> library). It is not an official API and may
+    break if Garmin changes their login. Your login token is cached locally under
+    <code>Storage/.garmin_tokens/</code> so you only enter your password (and MFA
+    code) once. Downloaded dives get the same auto-extracted data as Bulk Import.
+    </div>
+    """, unsafe_allow_html=True)
+
+    # --- Auth panel ---------------------------------------------------------
+    if st.session_state.garmin_client is None:
+        # Try to silently resume from a cached token first.
+        resumed = GarminConnectClient.resume_session()
+        if resumed is not None:
+            st.session_state.garmin_client = resumed
+
+    if st.session_state.garmin_client is None:
+        _render_garmin_login()
+        return
+
+    # Authenticated from here on.
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.success("Connected to Garmin Connect.")
+    with col2:
+        if st.button("Log out", width="stretch"):
+            st.session_state.garmin_client = None
+            st.session_state.garmin_mfa_state = None
+            st.session_state.garmin_dive_list = None
+            st.rerun()
+
+    st.divider()
+    _render_garmin_dive_fetch()
+
+
+def _render_garmin_login():
+    """Render the Garmin login form (with two-step MFA support)."""
+    creds = detect_garmin_credentials()
+
+    if st.session_state.garmin_mfa_state is not None:
+        # Second step: we have a pending MFA challenge.
+        st.info("This account requires multi-factor authentication.")
+        mfa_code = st.text_input(
+            "MFA code",
+            help="Enter the one-time code from your email or authenticator app"
+        )
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button("Verify code", type="primary", width="stretch"):
+                try:
+                    client = st.session_state.get("garmin_pending_client")
+                    GarminConnectClient.finish_mfa(
+                        client, st.session_state.garmin_mfa_state, mfa_code
+                    )
+                    st.session_state.garmin_client = client
+                    st.session_state.garmin_mfa_state = None
+                    st.session_state.pop("garmin_pending_client", None)
+                    st.success("Verified. Connected to Garmin Connect.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"MFA verification failed: {e}")
+        with col2:
+            if st.button("Cancel", width="stretch"):
+                st.session_state.garmin_mfa_state = None
+                st.session_state.pop("garmin_pending_client", None)
+                st.rerun()
+        return
+
+    # First step: email + password.
+    if creds.get("email") or creds.get("password"):
+        st.caption("Credentials pre-filled from .env (GARMIN_EMAIL / GARMIN_PASSWORD).")
+    email = st.text_input("Garmin email", value=creds.get("email", ""))
+    password = st.text_input(
+        "Garmin password", value=creds.get("password", ""), type="password"
+    )
+
+    if st.button("Connect", type="primary", width="stretch"):
+        if not email or not password:
+            st.error("Enter both email and password.")
+            return
+        with st.spinner("Logging in to Garmin Connect..."):
+            try:
+                client, mfa_state = GarminConnectClient.begin_login(email, password)
+            except Exception as e:
+                st.error(f"Login failed: {e}")
+                return
+        if mfa_state is not None:
+            # Stash the in-progress client and prompt for the MFA code.
+            st.session_state.garmin_pending_client = client
+            st.session_state.garmin_mfa_state = mfa_state
+            st.rerun()
+        else:
+            st.session_state.garmin_client = client
+            st.success("Connected to Garmin Connect.")
+            st.rerun()
+
+
+def _render_garmin_dive_fetch():
+    """Render date-range selection, dive checklist, and download/import."""
+    client = st.session_state.garmin_client
+
+    st.subheader("Find Dives")
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date = st.date_input(
+            "From", value=datetime.now().date() - timedelta(days=90)
+        )
+    with col2:
+        end_date = st.date_input("To", value=datetime.now().date())
+
+    if st.button("Fetch dives", width="stretch"):
+        with st.spinner("Fetching diving activities from Garmin..."):
+            try:
+                dives = GarminConnectClient.list_dives(
+                    client,
+                    start_date.strftime("%Y-%m-%d"),
+                    end_date.strftime("%Y-%m-%d"),
+                )
+                st.session_state.garmin_dive_list = dives
+            except Exception as e:
+                st.error(f"Failed to fetch dives: {e}")
+                return
+
+    dives = st.session_state.garmin_dive_list
+    if dives is None:
+        st.info("Choose a date range and click 'Fetch dives'.")
+        return
+
+    if not dives:
+        st.warning("No diving activities found in that date range.")
+        return
+
+    st.success(f"Found {len(dives)} diving activities.")
+    storage_folder = st.session_state.storage_folder
+
+    # --- Selection checklist ------------------------------------------------
+    st.divider()
+    st.caption("Select dives to download and import. Already-imported dives are pre-unchecked.")
+
+    selected_ids = []
+    for dive in dives:
+        activity_id = dive["activity_id"]
+        imported = GarminConnectClient.already_imported(activity_id, storage_folder)
+
+        start = dive.get("start_time") or "?"
+        depth = dive.get("max_depth")
+        duration = dive.get("duration")
+        depth_str = f"{depth:.1f}m" if isinstance(depth, (int, float)) else "?"
+        dur_str = format_duration(duration) if duration else "?"
+        label = f"{start} — {dive.get('name', 'Dive')} ({depth_str}, {dur_str})"
+        if imported:
+            label += "  ✓ imported"
+
+        if st.checkbox(label, value=not imported, key=f"garmin_dive_{activity_id}"):
+            selected_ids.append(activity_id)
+
+    st.divider()
+    if st.button("Download & Import Selected", type="primary", width="stretch"):
+        if not selected_ids:
+            st.warning("No dives selected.")
+            return
+        _run_garmin_download(client, dives, selected_ids, storage_folder)
+
+
+def _run_garmin_download(client, dives, selected_ids, storage_folder):
+    """Download selected dives' .fit files and run them through the parser."""
+    storage_path = Path(storage_folder)
+    fit_files_dest = storage_path / "FitFiles"
+    fit_files_dest.mkdir(parents=True, exist_ok=True)
+
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    success_count = 0
+    error_count = 0
+    errors = []
+
+    for i, activity_id in enumerate(selected_ids):
+        progress_bar.progress((i + 1) / len(selected_ids))
+        status_text.text(f"Processing dive {activity_id} ({i+1}/{len(selected_ids)})")
+
+        try:
+            fit_path = GarminConnectClient.download_fit(
+                client, activity_id, str(fit_files_dest)
+            )
+
+            dive = parse_garmin_dive(str(fit_path))
+
+            output_path = storage_path / f"{activity_id}.pickle"
+            with open(output_path, "wb") as f:
+                pickle.dump(dive, f)
+
+            success_count += 1
+        except Exception as e:
+            error_count += 1
+            errors.append((activity_id, str(e)))
+
+    progress_bar.progress(1.0)
+    status_text.text("Import complete!")
+
+    st.divider()
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Successful Imports", success_count)
+    with col2:
+        st.metric("Failed Imports", error_count)
+
+    if errors:
+        with st.expander("Error Details", expanded=True):
+            for activity_id, error in errors:
+                st.error(f"**Activity {activity_id}**: {error}")
+
+    refresh_agent()
+    st.success("Agent cache cleared. New dives will be loaded on next query.")
 
 
 def render_add_gear_tab():
