@@ -69,7 +69,11 @@ class Location:
     """GPS coordinates of the dive exit"""
 
     description: Optional[str] = None
-    """Description of the dive location"""
+    """Free-text note for the dive (e.g. Garmin Connect's dive Note), minus any
+    structured lines (like "grupa: ...") that were parsed into other fields"""
+
+    entry_type: Optional[str] = None
+    """How the dive was entered, e.g. 'Boat' or 'Shore' (from Garmin Connect)"""
 
 
 @dataclass

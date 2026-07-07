@@ -17,8 +17,27 @@ All notable changes to DiveLog are documented in this file.
 - Optional `GARMIN_EMAIL` / `GARMIN_PASSWORD` in `.env` pre-fill the login form.
 - Pick a date range, select from the list of diving activities, and import.
   Already-imported dives are detected (by activity id) and skipped.
-- Downloaded dives feed the existing parser, so they carry the same
-  auto-extracted data as Bulk Import (no buddy/gear/pressure — enrich later).
+- Downloaded dives are enriched with metadata from the Garmin Connect activity
+  record (not just the `.fit` file): **buddy**, **weight belt weight**,
+  **location name**, and the dive **Note** (mapped to the location description).
+  Tank pressures are read too when present (Garmin usually leaves them blank).
+- Dives are saved as `<dive number> - <dive name>.pickle` (e.g.
+  `24 - Single-Gas Dive.pickle`), matching how they appear in the Garmin app.
+- Dive gear (suit/mask/etc.) is **not** available from Garmin for dive
+  activities (its gear feature only covers shoes/bikes), so gear still needs to
+  be added manually.
+- **Group parsing**: the whole buddy group is now captured. Multiple names in
+  Garmin's buddy field and any `grupa: name, name, ...` line in the Note are
+  parsed into the dive's group set (which now also includes your primary buddy).
+- **Entry type** (Shore/Boat) is stored on `Location.entry_type`.
+- **Location inference**: the dive-site name is taken from the dive name (with
+  Garmin's "Single-Gas Dive" boilerplate stripped), falling back to Garmin's
+  location field — since dives are usually named after the site.
+- The remaining dive **Note** (after structured lines like `grupa:` are removed)
+  is stored on `Location.description` for later tooling.
+- **Optional AI parsing**: with an LLM key configured, a checkbox in the Garmin
+  import tab runs one LLM call per dive to extract the dive site, the full buddy
+  group, and a cleaned note from the free-text name/note (handles Croatian).
 
 ## [1.0.0] - 2024-12-24
 

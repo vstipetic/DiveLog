@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -166,12 +167,15 @@ def list_dives(
 
     normalized: List[Dict[str, Any]] = []
     for a in dives:
+        dive_summary = a.get("summarizedDiveInfo") or {}
         normalized.append(
             {
                 "activity_id": str(a.get("activityId")),
+                "dive_number": a.get("diveNumber"),
                 "start_time": a.get("startTimeLocal") or a.get("startTimeGMT"),
                 "name": a.get("activityName") or "Dive",
-                "max_depth": a.get("maxDepth"),
+                "location_name": a.get("locationName"),
+                "max_depth": a.get("maxDepth") or dive_summary.get("maxDepth"),
                 "duration": a.get("duration"),
                 "type_key": (a.get("activityType") or {}).get("typeKey"),
             }
@@ -186,6 +190,191 @@ def list_dives(
         len(activities),
     )
     return normalized
+
+
+def _as_int(value: Any) -> int:
+    """Coerce a possibly-None/float pressure value to int (0 if missing)."""
+    return int(value) if isinstance(value, (int, float)) else 0
+
+
+# Matches a "grupa: name, name, ..." line (Croatian for "group") in a dive note,
+# case-insensitive, anywhere in the (possibly multi-line) description.
+_GROUP_LINE_RE = re.compile(r"^[ \t]*grupa[ \t]*:[ \t]*(.*)$", re.IGNORECASE | re.MULTILINE)
+
+# Names within a group line are separated by commas, "&", or standalone " i "
+# (Croatian "and").
+_NAME_SEP_RE = re.compile(r"\s*,\s*|\s*&\s*|\s+i\s+", re.IGNORECASE)
+
+# Garmin's default dive-activity names carry no location info; strip them so the
+# remainder (if any) can be used as the dive-site name.
+_DIVE_BOILERPLATE_RE = re.compile(
+    r"\b(single|multi|ccr|gauge|apnea)[\s-]*gas?\s*dive\b|\bdive\b",
+    re.IGNORECASE,
+)
+
+
+def _split_names(text: str) -> List[str]:
+    """Split a free-text list of people into cleaned, de-duplicated names."""
+    names = []
+    for part in _NAME_SEP_RE.split(text or ""):
+        name = part.strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def parse_group_from_note(description: Optional[str]) -> Tuple[List[str], Optional[str]]:
+    """
+    Extract a ``"grupa: ..."`` roster from a dive note.
+
+    Args:
+        description: the raw dive note (may be ``None``).
+
+    Returns:
+        ``(group_names, remaining_description)`` where ``group_names`` is the list
+        of people named on the ``grupa:`` line(s), and ``remaining_description`` is
+        the note with those lines removed (``None`` if nothing is left).
+    """
+    if not description:
+        return [], description
+
+    group_names: List[str] = []
+    for match in _GROUP_LINE_RE.finditer(description):
+        for name in _split_names(match.group(1)):
+            if name not in group_names:
+                group_names.append(name)
+
+    remaining = _GROUP_LINE_RE.sub("", description)
+    # Collapse blank lines left behind and trim.
+    remaining = re.sub(r"\n{3,}", "\n\n", remaining).strip()
+
+    return group_names, (remaining or None)
+
+
+def infer_location_name(activity_name: Optional[str], garmin_location: Optional[str]) -> str:
+    """
+    Infer the dive-site name, preferring the dive name over Garmin's location.
+
+    The user names dives after the site, so an informative name (anything left
+    after stripping Garmin's boilerplate like "Single-Gas Dive") wins. When the
+    name is pure boilerplate, fall back to Garmin's ``locationName``.
+
+    Args:
+        activity_name: the dive/activity name.
+        garmin_location: Garmin Connect's ``locationName`` field.
+
+    Returns:
+        The inferred dive-site name (``""`` if nothing usable is available).
+    """
+    stripped = _DIVE_BOILERPLATE_RE.sub("", activity_name or "")
+    stripped = re.sub(r"\s+", " ", stripped).strip(" -")
+    if stripped:
+        return stripped
+    return (garmin_location or "").strip()
+
+
+def get_dive_metadata(client: Garmin, activity_id: str) -> Dict[str, Any]:
+    """
+    Fetch per-dive metadata from the Garmin Connect activity record.
+
+    Most dive metadata does NOT live in the ``.fit`` file - it is entered in the
+    Garmin app and stored in the cloud. This calls ``get_activity`` (one request)
+    and returns a dict whose keys line up with what
+    :func:`Utilities.Parsers.GarminDiveParser.parse_garmin_dive` accepts as its
+    ``metadata`` argument, plus a few display-only fields.
+
+    Populated in practice: ``dive_number``, ``activity_name``, ``location_name``
+    (inferred from the dive name, see :func:`infer_location_name`), ``buddy`` +
+    ``group`` (parsed from the buddy field and any ``"grupa: ..."`` note line, see
+    :func:`parse_group_from_note`), ``weights`` (weight belt, kg),
+    ``location_description`` (the dive *Note* minus structured lines), and
+    ``entry_type`` (Shore/Boat). The raw ``garmin_location_name``,
+    ``raw_description`` and ``raw_buddy`` are also returned for optional LLM
+    enrichment and future tooling.
+
+    Rarely populated (Garmin stores the field but users seldom fill it): tank
+    ``start_pressure`` / ``end_pressure`` - divers often type these into the Note
+    instead. Dive gear (suit/mask/etc.) is not exposed for dive activities, so it
+    stays ``None`` and must be added manually.
+
+    Args:
+        client: an authenticated ``Garmin`` client.
+        activity_id: the Garmin activity id.
+
+    Returns:
+        Metadata dict (all keys always present; values may be ``None``/empty).
+    """
+    act = client.get_activity(activity_id)
+    dive_info = act.get("diveInfo") or {}
+    metadata_dto = act.get("metadataDTO") or {}
+    gases = dive_info.get("diveGases") or []
+    first_gas = gases[0] if gases else {}
+    activity_name = act.get("activityName")
+    raw_description = act.get("description")  # the app's "Note" field
+
+    # Buddies: Garmin stores them in one free-text field, often comma-separated.
+    # The first is the primary buddy; all of them belong to the group.
+    buddy_names = _split_names(dive_info.get("buddy") or "")
+    primary_buddy = buddy_names[0] if buddy_names else ""
+
+    # Pull a "grupa: ..." roster out of the note and strip it from the text.
+    note_group, remaining_note = parse_group_from_note(raw_description)
+
+    # The whole group = every named buddy + everyone on the grupa line
+    # (the primary buddy is included in the group, not just the buddy field).
+    group = set(buddy_names) | set(note_group)
+
+    return {
+        # --- accepted by parse_garmin_dive(metadata=...) ---
+        "location_name": infer_location_name(activity_name, act.get("locationName")),
+        "location_description": remaining_note,
+        "buddy": primary_buddy,
+        "group": group,
+        "weights": dive_info.get("weight") or 0.0,
+        "start_pressure": _as_int(first_gas.get("tankStartingPressure")),
+        "end_pressure": _as_int(first_gas.get("tankEndingPressure")),
+        "entry_type": dive_info.get("entryType"),
+        # --- display / naming only ---
+        "dive_number": metadata_dto.get("diveNumber"),
+        "activity_name": activity_name,
+        # --- raw fields kept for optional LLM enrichment / future tools ---
+        "garmin_location_name": act.get("locationName"),
+        "raw_description": raw_description,
+        "raw_buddy": dive_info.get("buddy"),
+    }
+
+
+def dive_filename(
+    dive_number: Optional[int], activity_name: Optional[str], activity_id: str
+) -> str:
+    """
+    Build a filesystem-safe pickle stem like ``"24 - Single-Gas Dive"``.
+
+    Mirrors how dives are labelled in the Garmin app (``<dive number> <name>``).
+    Falls back to the activity id when there is no dive number, guaranteeing a
+    unique, collision-free filename.
+
+    Args:
+        dive_number: Garmin's sequential dive number (may be ``None``).
+        activity_name: the activity/dive name (may be ``None``).
+        activity_id: unique Garmin activity id, used as a fallback.
+
+    Returns:
+        A sanitized filename stem (no extension), safe on Windows and POSIX.
+    """
+    # Sanitize the name first: drop characters invalid in Windows filenames,
+    # collapse whitespace, and trim trailing dots/spaces.
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", activity_name or "")
+    name = re.sub(r"\s+", " ", name).strip().rstrip(".").strip()
+
+    if dive_number is not None and name:
+        return f"{dive_number} - {name}"
+    if dive_number is not None:
+        return str(dive_number)
+    if name:
+        return name
+    # No number and no usable name -> fall back to the unique activity id.
+    return str(activity_id)
 
 
 def already_imported(activity_id: str, storage_folder: str) -> bool:
@@ -251,6 +440,10 @@ __all__ = [
     "begin_login",
     "finish_mfa",
     "list_dives",
+    "get_dive_metadata",
+    "parse_group_from_note",
+    "infer_location_name",
+    "dive_filename",
     "already_imported",
     "download_fit",
     "GarminConnectAuthenticationError",

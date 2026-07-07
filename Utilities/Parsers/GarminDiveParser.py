@@ -228,7 +228,8 @@ def parse_location(fit_file: FitFile, metadata: Dict[str, Any]) -> Location:
         name=metadata.get('location_name', ''),
         entry=entry_coords,
         exit=exit_coords,  # TODO: implement exit coordinates parsing
-        description=metadata.get('location_description')
+        description=metadata.get('location_description'),
+        entry_type=metadata.get('entry_type')
     )
 
 

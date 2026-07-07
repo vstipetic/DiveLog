@@ -896,7 +896,14 @@ def _render_garmin_dive_fetch():
         duration = dive.get("duration")
         depth_str = f"{depth:.1f}m" if isinstance(depth, (int, float)) else "?"
         dur_str = format_duration(duration) if duration else "?"
-        label = f"{start} — {dive.get('name', 'Dive')} ({depth_str}, {dur_str})"
+        dive_number = dive.get("dive_number")
+        num_str = f"#{dive_number} " if dive_number is not None else ""
+        location = dive.get("location_name")
+        loc_str = f" @ {location}" if location else ""
+        label = (
+            f"{num_str}{dive.get('name', 'Dive')}{loc_str} — "
+            f"{start} ({depth_str}, {dur_str})"
+        )
         if imported:
             label += "  ✓ imported"
 
@@ -904,15 +911,51 @@ def _render_garmin_dive_fetch():
             selected_ids.append(activity_id)
 
     st.divider()
+
+    # Optional AI parsing of the free-text name/note (needs a configured LLM key).
+    provider = _get_llm_provider()
+    use_ai = False
+    if provider is not None:
+        use_ai = st.checkbox(
+            "Use AI to parse dive site & group from names/notes",
+            value=False,
+            help="Runs one LLM call per dive to extract the dive site, the full "
+                 "buddy group, and a cleaned note. Without this, deterministic "
+                 "rules are used (still parses 'grupa:' lines).",
+        )
+    else:
+        st.caption("Configure an LLM API key in the sidebar to enable AI note parsing.")
+
     if st.button("Download & Import Selected", type="primary", width="stretch"):
         if not selected_ids:
             st.warning("No dives selected.")
             return
-        _run_garmin_download(client, dives, selected_ids, storage_folder)
+        _run_garmin_download(
+            client, dives, selected_ids, storage_folder,
+            provider=provider if use_ai else None,
+        )
 
 
-def _run_garmin_download(client, dives, selected_ids, storage_folder):
-    """Download selected dives' .fit files and run them through the parser."""
+def _get_llm_provider():
+    """Build an LLMProvider from the sidebar's configured key, or None."""
+    api_key = st.session_state.get("api_key")
+    provider_name = st.session_state.get("provider")
+    if not api_key or not provider_name:
+        return None
+    try:
+        from Utilities.LLMProvider import create_provider
+        return create_provider(
+            provider_name, api_key, model=st.session_state.get("model")
+        )
+    except Exception:
+        return None
+
+
+def _run_garmin_download(client, dives, selected_ids, storage_folder, provider=None):
+    """Download selected dives' .fit files and run them through the parser.
+
+    If ``provider`` is given, each dive's metadata is refined with an LLM.
+    """
     storage_path = Path(storage_folder)
     fit_files_dest = storage_path / "FitFiles"
     fit_files_dest.mkdir(parents=True, exist_ok=True)
@@ -929,13 +972,29 @@ def _run_garmin_download(client, dives, selected_ids, storage_folder):
         status_text.text(f"Processing dive {activity_id} ({i+1}/{len(selected_ids)})")
 
         try:
+            # 1. Download the original .fit (named by activity id -> dedup anchor).
             fit_path = GarminConnectClient.download_fit(
                 client, activity_id, str(fit_files_dest)
             )
 
-            dive = parse_garmin_dive(str(fit_path))
+            # 2. Pull cloud-only metadata (buddy, weight, note, location, ...).
+            metadata = GarminConnectClient.get_dive_metadata(client, activity_id)
 
-            output_path = storage_path / f"{activity_id}.pickle"
+            # 2b. Optionally refine the free-text fields with an LLM.
+            if provider is not None:
+                from Utilities.DiveEnricher import enrich_metadata
+                metadata = enrich_metadata(metadata, provider)
+
+            # 3. Parse the .fit, enriched with the Garmin Connect metadata.
+            dive = parse_garmin_dive(str(fit_path), metadata)
+
+            # 4. Save the pickle named "<dive number> - <name>", like the app.
+            stem = GarminConnectClient.dive_filename(
+                metadata.get("dive_number"),
+                metadata.get("activity_name"),
+                activity_id,
+            )
+            output_path = storage_path / f"{stem}.pickle"
             with open(output_path, "wb") as f:
                 pickle.dump(dive, f)
 
