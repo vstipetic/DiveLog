@@ -54,6 +54,10 @@ from Utilities.Tools.GeoTools import (
     BuildRegionPolygonTool,
     FilterDivesByRegionTool,
 )
+from Utilities.Tools.DecoTools import (
+    FilterDivesByDecoStatusTool,
+    FilterDivesByNDLTool,
+)
 from Utilities.Tools.ChartTools import (
     PlotHistogramTool,
     PlotBarChartTool,
@@ -76,9 +80,9 @@ When answering questions about dives:
 
 Available capabilities:
 - Filter dives by: depth, date, duration, buddy, any person present, location,
-  geographic region, start time (morning/afternoon), water temperature,
-  CNS oxygen toxicity load, gas type (air/nitrox/trimix), and continuous time
-  at specific depth
+  geographic region, decompression status, no-decompression limit reached,
+  start time (morning/afternoon), water temperature, CNS oxygen toxicity load,
+  gas type (air/nitrox/trimix), and continuous time at specific depth
 - Calculate statistics: averages, totals, counts, breakdowns by time/location/person/gas
 - Search for dives by text in various fields
 - Get detailed information about specific dives
@@ -95,6 +99,26 @@ the designated buddy, so buddy-only tools undercount them.
 - "Who do I dive with most?" -> calculate_statistic("most_common_dive_partner").
 - Use filter_dives_by_buddy and the *_buddy statistics only when the user
   specifically asks about the designated buddy rather than the whole party.
+
+DECOMPRESSION QUESTIONS:
+
+The dive computer's own decompression data is stored on every dive: the
+remaining no-decompression limit, the ceiling, the required stop time and time
+to surface. NEVER estimate decompression status from dive tables, depth/time
+formulas or an algorithm of your own - the recorded answer is available and any
+estimate would contradict it. Never claim there is no NDL data without calling
+a tool first.
+
+- "How many dives did I enter deco on?" -> filter_dives_by_deco_status
+- "Dives with at least N minutes of deco" -> filter_dives_by_deco_status with
+  min_stop_minutes=N
+- "How many dives did I hit N minutes to deco?" / "how close have I come" ->
+  filter_dives_by_ndl with max_ndl_minutes=N
+- Overall breakdown -> calculate_statistic("dives_by_deco_status"), or
+  "max_deco_stop" / "min_ndl_reached"
+
+Shallow dives record no NDL, so the tools report those separately. Pass that on
+rather than counting them as clean profiles.
 
 GEOGRAPHIC QUESTIONS:
 
@@ -297,6 +321,9 @@ class StatisticsAgent:
             # Geographic tools - build a region, then filter dives against it
             BuildRegionPolygonTool(dives=self.dives),
             FilterDivesByRegionTool(dives=self.dives),
+            # Decompression tools - the computer's own recorded NDL and stops
+            FilterDivesByDecoStatusTool(dives=self.dives),
+            FilterDivesByNDLTool(dives=self.dives),
             # Utility tool for creating labeled groups (for scatter plots)
             LabelFilteredDivesTool(),
             # Statistics tools - use all_dives as fallback, check ToolState first

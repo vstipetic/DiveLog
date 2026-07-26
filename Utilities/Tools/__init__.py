@@ -41,6 +41,11 @@ from Utilities.Tools.GeoTools import (
     FilterDivesByRegionTool,
 )
 
+from Utilities.Tools.DecoTools import (
+    FilterDivesByDecoStatusTool,
+    FilterDivesByNDLTool,
+)
+
 from Utilities.Tools.ToolState import ToolState
 from Utilities.Tools.ChartState import ChartState
 from Utilities.Tools.GeoState import GeoRegionState
@@ -69,6 +74,9 @@ __all__ = [
     # Geographic tools
     "BuildRegionPolygonTool",
     "FilterDivesByRegionTool",
+    # Decompression tools
+    "FilterDivesByDecoStatusTool",
+    "FilterDivesByNDLTool",
     # Statistics tools
     "CalculateStatisticTool",
     "CalculateTimeBelowDepthTool",

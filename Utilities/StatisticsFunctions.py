@@ -16,6 +16,7 @@ from typing import List, Dict, Optional
 from collections import defaultdict
 
 from Utilities.ClassUtils.DiveClass import Dive
+import Utilities.DecoFunctions as deco
 from Utilities.FilterFunctions import dive_included_person, dive_people_names
 from Utilities.Schemas.ToolOutputs import StatisticsResult
 
@@ -745,6 +746,127 @@ def count_dives_with_person(dives: List[Dive], person_name: str) -> StatisticsRe
     )
 
 
+def dives_by_deco_status(dives: List[Dive]) -> StatisticsResult:
+    """Break dives down by whether they incurred a decompression obligation.
+
+    Dives whose computer recorded no decompression data get their own bucket
+    rather than being counted as clean profiles.
+
+    Args:
+        dives: List of Dive objects
+
+    Returns:
+        StatisticsResult with a breakdown by decompression status
+    """
+    if not dives:
+        return StatisticsResult(
+            stat_type="dives_by_deco_status",
+            value=0.0,
+            unit="dives",
+            context="No dives to analyze"
+        )
+
+    counts: Dict[str, float] = {
+        "entered deco": 0.0,
+        "stayed within NDL": 0.0,
+        "no deco data recorded": 0.0,
+    }
+
+    for dive in dives:
+        status = deco.dive_entered_deco(dive)
+        if status is None:
+            counts["no deco data recorded"] += 1
+        elif status:
+            counts["entered deco"] += 1
+        else:
+            counts["stayed within NDL"] += 1
+
+    breakdown = {k: v for k, v in counts.items() if v}
+
+    return StatisticsResult(
+        stat_type="dives_by_deco_status",
+        value=counts["entered deco"],
+        unit="dives",
+        breakdown=breakdown,
+        context=(
+            f"{counts['entered deco']:.0f} of {len(dives)} dives incurred a "
+            "decompression obligation"
+        )
+    )
+
+
+def max_deco_stop(dives: List[Dive]) -> StatisticsResult:
+    """Longest required decompression stop across the dives, in minutes.
+
+    Args:
+        dives: List of Dive objects
+
+    Returns:
+        StatisticsResult with the longest stop in minutes
+    """
+    stops = [
+        (dive, deco.max_stop_seconds(dive))
+        for dive in dives
+    ]
+    valid = [(d, s) for d, s in stops if s]
+
+    if not valid:
+        return StatisticsResult(
+            stat_type="max_deco_stop",
+            value=0.0,
+            unit="minutes",
+            context="No dive required a decompression stop"
+        )
+
+    dive, seconds = max(valid, key=lambda pair: pair[1])
+    return StatisticsResult(
+        stat_type="max_deco_stop",
+        value=round(seconds / 60, 1),
+        unit="minutes",
+        context=(
+            f"Longest stop on {dive.basics.start_time.strftime('%Y-%m-%d')} at "
+            f"{dive.location.name or 'Unknown'} "
+            f"({len(valid)} of {len(dives)} dives required a stop)"
+        )
+    )
+
+
+def min_ndl_reached(dives: List[Dive]) -> StatisticsResult:
+    """Closest any dive came to the no-decompression limit, in minutes.
+
+    Args:
+        dives: List of Dive objects
+
+    Returns:
+        StatisticsResult with the lowest NDL reached in minutes
+    """
+    values = [
+        (dive, deco.min_ndl_seconds(dive))
+        for dive in dives
+        if deco.has_ndl_data(dive)
+    ]
+
+    if not values:
+        return StatisticsResult(
+            stat_type="min_ndl_reached",
+            value=0.0,
+            unit="minutes",
+            context="No dive recorded no-decompression-limit data"
+        )
+
+    dive, seconds = min(values, key=lambda pair: pair[1])
+    return StatisticsResult(
+        stat_type="min_ndl_reached",
+        value=round(seconds / 60, 1),
+        unit="minutes",
+        context=(
+            f"Lowest NDL on {dive.basics.start_time.strftime('%Y-%m-%d')} at "
+            f"{dive.location.name or 'Unknown'} "
+            f"({len(values)} of {len(dives)} dives recorded NDL)"
+        )
+    )
+
+
 def total_air_consumption(dives: List[Dive]) -> StatisticsResult:
     """Calculate total air consumption across all dives.
 
@@ -1133,6 +1255,10 @@ STATISTICS_MAP = {
     # People statistics that count group members, not just the buddy.
     # (count_dives_with_person is not here: it takes a name argument, so it is
     # exposed through its own tool, like time_below_depth.)
+    # Decompression, straight from the dive computer's own recorded values.
+    "dives_by_deco_status": dives_by_deco_status,
+    "max_deco_stop": max_deco_stop,
+    "min_ndl_reached": min_ndl_reached,
     "dives_by_person": dives_by_person,
     "most_common_dive_partner": most_common_dive_partner,
     "unique_dive_partners": unique_dive_partners,
