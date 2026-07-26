@@ -217,11 +217,24 @@ def parse_basic_info(timeline: DiveTimeline, start_time: datetime) -> DiveBasicI
 
 
 def parse_people(metadata: Dict[str, Any]) -> People:
-    """Parse the people information from metadata"""
+    """
+    Parse the people information from metadata.
+
+    ``buddy`` and ``group`` are kept as two independent fields: the buddy is the
+    one person designated as such (empty when nobody was), while the group is
+    everyone on the dive. A designated buddy is always part of the group too, so
+    a person search never has to consult both fields.
+    """
+    buddy = (metadata.get('buddy') or '').strip()
+    group = set(metadata.get('group') or [])
+
+    if buddy:
+        group.add(buddy)
+
     return People(
-        buddy=metadata.get('buddy', ''),
+        buddy=buddy,
         divemaster=metadata.get('divemaster'),
-        group=set(metadata.get('group', []))
+        group=group
     )
 
 

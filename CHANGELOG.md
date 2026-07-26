@@ -44,6 +44,19 @@ All notable changes to DiveLog are documented in this file.
 - The Garmin date range no longer resets to the last-90-days default on every
   render. The selected range is kept in server state and echoed back into the
   form, so it survives the post/redirect after "Fetch dives".
+- **The dive buddy is read from Garmin's buddy field again.** The optional LLM
+  enrichment pass merged the buddy field and the note's `grupa:` roster into one
+  list and took whichever name came first as the buddy, so a group member
+  routinely displaced the real buddy, and dives with no buddy at all (the ones
+  the user led) had one invented from the roster. On the reference log this was
+  wrong for 17 of 78 dives. The buddy now comes from Garmin Connect's buddy
+  field and nothing else — empty field, empty buddy — and the enrichment pass
+  can only widen the group, never shrink it or name a buddy. `parse_people()`
+  keeps `buddy` and `group` as separate fields but guarantees a designated buddy
+  is also in the group, so a person search never has to consult both.
+- `repair_dive_buddies.py` fixes the buddy on dives already on disk, re-reading
+  the field from Garmin Connect and rewriting nothing else. Dry-run by default;
+  pass `--apply` to write (backs each pickle up to `.pickle.bak`).
 
 ### Security
 

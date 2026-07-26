@@ -284,8 +284,9 @@ def get_dive_metadata(client: Garmin, activity_id: str) -> Dict[str, Any]:
     ``metadata`` argument, plus a few display-only fields.
 
     Populated in practice: ``dive_number``, ``activity_name``, ``location_name``
-    (inferred from the dive name, see :func:`infer_location_name`), ``buddy`` +
-    ``group`` (parsed from the buddy field and any ``"grupa: ..."`` note line, see
+    (inferred from the dive name, see :func:`infer_location_name`), ``buddy``
+    (Garmin's buddy field only - empty when the user designated nobody) and
+    ``group`` (the buddy field plus any ``"grupa: ..."`` note line, see
     :func:`parse_group_from_note`), ``weights`` (weight belt, kg),
     ``location_description`` (the dive *Note* minus structured lines), and
     ``entry_type`` (Shore/Boat). The raw ``garmin_location_name``,
@@ -312,16 +313,22 @@ def get_dive_metadata(client: Garmin, activity_id: str) -> Dict[str, Any]:
     activity_name = act.get("activityName")
     raw_description = act.get("description")  # the app's "Note" field
 
-    # Buddies: Garmin stores them in one free-text field, often comma-separated.
-    # The first is the primary buddy; all of them belong to the group.
+    # The BUDDY comes from Garmin's own buddy field and nowhere else. It is the
+    # only place the user designates a buddy, so it is authoritative: when it is
+    # empty there was no buddy (e.g. dives the user led), and a name pulled from
+    # the note's group roster must never be promoted into it.
+    #
+    # Garmin stores buddies in one free-text field, often comma-separated. The
+    # first is the primary buddy; all of them belong to the group as well.
     buddy_names = _split_names(dive_info.get("buddy") or "")
     primary_buddy = buddy_names[0] if buddy_names else ""
 
     # Pull a "grupa: ..." roster out of the note and strip it from the text.
     note_group, remaining_note = parse_group_from_note(raw_description)
 
-    # The whole group = every named buddy + everyone on the grupa line
-    # (the primary buddy is included in the group, not just the buddy field).
+    # The GROUP is everyone on the dive: the buddy field plus the grupa line.
+    # Buddy and group stay separate fields, but a designated buddy is always in
+    # the group too, so a person search never has to consult both.
     group = set(buddy_names) | set(note_group)
 
     return {
@@ -330,6 +337,9 @@ def get_dive_metadata(client: Garmin, activity_id: str) -> Dict[str, Any]:
         "location_description": remaining_note,
         "buddy": primary_buddy,
         "group": group,
+        # Names from the authoritative buddy field, kept so later passes (the
+        # optional LLM enrichment) can widen the group without overwriting them.
+        "buddy_names": buddy_names,
         "weights": dive_info.get("weight") or 0.0,
         "start_pressure": _as_int(first_gas.get("tankStartingPressure")),
         "end_pressure": _as_int(first_gas.get("tankEndingPressure")),
