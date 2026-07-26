@@ -36,8 +36,14 @@ from Utilities.Tools.SearchTool import (
     ListAllDivesTool,
 )
 
+from Utilities.Tools.GeoTools import (
+    BuildRegionPolygonTool,
+    FilterDivesByRegionTool,
+)
+
 from Utilities.Tools.ToolState import ToolState
 from Utilities.Tools.ChartState import ChartState
+from Utilities.Tools.GeoState import GeoRegionState
 
 from Utilities.Tools.ChartTools import (
     PlotHistogramTool,
@@ -60,6 +66,9 @@ __all__ = [
     "FilterDivesByGasTypeTool",
     "FilterDivesByDurationAtDepthTool",
     "LabelFilteredDivesTool",
+    # Geographic tools
+    "BuildRegionPolygonTool",
+    "FilterDivesByRegionTool",
     # Statistics tools
     "CalculateStatisticTool",
     "CalculateTimeBelowDepthTool",
@@ -71,6 +80,7 @@ __all__ = [
     # State management
     "ToolState",
     "ChartState",
+    "GeoRegionState",
     # Chart tools
     "PlotHistogramTool",
     "PlotBarChartTool",

@@ -49,6 +49,11 @@ from Utilities.Tools.SearchTool import (
 )
 from Utilities.Tools.ToolState import ToolState
 from Utilities.Tools.ChartState import ChartState
+from Utilities.Tools.GeoState import GeoRegionState
+from Utilities.Tools.GeoTools import (
+    BuildRegionPolygonTool,
+    FilterDivesByRegionTool,
+)
 from Utilities.Tools.ChartTools import (
     PlotHistogramTool,
     PlotBarChartTool,
@@ -71,8 +76,9 @@ When answering questions about dives:
 
 Available capabilities:
 - Filter dives by: depth, date, duration, buddy, any person present, location,
-  start time (morning/afternoon), water temperature, CNS oxygen toxicity load,
-  gas type (air/nitrox/trimix), and continuous time at specific depth
+  geographic region, start time (morning/afternoon), water temperature,
+  CNS oxygen toxicity load, gas type (air/nitrox/trimix), and continuous time
+  at specific depth
 - Calculate statistics: averages, totals, counts, breakdowns by time/location/person/gas
 - Search for dives by text in various fields
 - Get detailed information about specific dives
@@ -89,6 +95,25 @@ the designated buddy, so buddy-only tools undercount them.
 - "Who do I dive with most?" -> calculate_statistic("most_common_dive_partner").
 - Use filter_dives_by_buddy and the *_buddy statistics only when the user
   specifically asks about the designated buddy rather than the whole party.
+
+GEOGRAPHIC QUESTIONS:
+
+Dives store GPS coordinates, so questions about where you dived are answered by
+building a region and filtering against it. Two routes:
+
+- Distance or a box ("within 5km of Vis", "near Karlobag", "between these
+  latitudes") -> build_region_polygon, then filter_dives_by_region with no
+  polygon argument. It computes the geometry exactly; never write circle
+  coordinates yourself.
+- A named area ("the Mediterranean", "Croatia", "Europe", "the Red Sea") ->
+  call filter_dives_by_region directly with your own approximate polygon in
+  GeoJSON [longitude, latitude] order. A dozen points tracing the outline is
+  enough. Say in your answer that the boundary is approximate.
+
+Use inside=false for "outside" questions ("dives outside Europe").
+
+Not every dive has a GPS fix. The tool reports how many were skipped for that
+reason -- pass that on rather than implying the count covers the whole log.
 - Create visualizations: histograms (depth/duration/temperature distributions),
   bar charts (dives by month/year/location/buddy), pie charts (proportional breakdowns),
   scatter plots (relationships between metrics like depth vs duration, with optional color coding by category)
@@ -269,6 +294,9 @@ class StatisticsAgent:
             FilterDivesByCNSLoadTool(dives=self.dives),
             FilterDivesByGasTypeTool(dives=self.dives),
             FilterDivesByDurationAtDepthTool(dives=self.dives),
+            # Geographic tools - build a region, then filter dives against it
+            BuildRegionPolygonTool(dives=self.dives),
+            FilterDivesByRegionTool(dives=self.dives),
             # Utility tool for creating labeled groups (for scatter plots)
             LabelFilteredDivesTool(),
             # Statistics tools - use all_dives as fallback, check ToolState first
@@ -315,10 +343,11 @@ class StatisticsAgent:
             f"query='{query.replace(chr(10), ' ')[:120]}'"
         )
 
-        # Clear any previous filter/chart state from prior queries
+        # Clear any previous filter/chart/region state from prior queries
         ToolState.clear()
         ChartState.clear()
-        _log_event("Cleared ToolState and ChartState")
+        GeoRegionState.clear()
+        _log_event("Cleared ToolState, ChartState and GeoRegionState")
 
         try:
             # Build system prompt with dive count
