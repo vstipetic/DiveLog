@@ -242,14 +242,19 @@ def parse_basic_info(
     Create the basic dive information.
 
     ``start_time`` arrives as UTC (straight off the .fit record). When the file
-    tells us the local offset, times are shifted into the dive site's local time
-    so they read the way the diver logged them; the offset is kept alongside so
-    UTC is still recoverable.
+    tells us the local offset, ``start_time``/``end_time`` are shifted into the
+    dive site's local time so they read the way the diver logged them -- the
+    time the watch was showing underwater. The UTC instants are kept alongside
+    in ``start_time_utc``/``end_time_utc``, which is what to use for anything
+    that has to order dives from different time zones on one timeline.
     """
     duration = timeline.timestamps[-1] if timeline.timestamps else 0.0
 
+    start_time_utc = start_time
+    end_time_utc = start_time_utc + timedelta(seconds=duration)
+
     if utc_offset is not None:
-        start_time = start_time + utc_offset
+        start_time = start_time_utc + utc_offset
 
     end_time = start_time + timedelta(seconds=duration)
 
@@ -259,7 +264,9 @@ def parse_basic_info(
         end_time=end_time,
         utc_offset_hours=(
             utc_offset.total_seconds() / 3600 if utc_offset is not None else None
-        )
+        ),
+        start_time_utc=start_time_utc,
+        end_time_utc=end_time_utc
     )
 
 
@@ -483,6 +490,7 @@ def get_fit_file_metadata(file_path: str) -> Dict[str, Any]:
 
     # Show the same local time the import will store, not the raw UTC anchor.
     utc_offset = parse_utc_offset(fit_file)
+    start_time_utc = start_time
     if utc_offset is not None:
         start_time = start_time + utc_offset
 
@@ -514,6 +522,7 @@ def get_fit_file_metadata(file_path: str) -> Dict[str, Any]:
             'entry_coordinates': entry_coords,
             'dive_number': dive_summary.get('dive_number'),
             'start_time': start_time,
+            'start_time_utc': start_time_utc,
             'utc_offset_hours': (
                 utc_offset.total_seconds() / 3600 if utc_offset is not None else None
             ),

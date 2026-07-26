@@ -6,13 +6,15 @@ dive logged at 18:16 in Egypt sat in the pickle as 16:16. The parser now shifts
 times into local time using the offset the .fit file itself records; this does
 the same to dives already on disk.
 
-Only ``basics.start_time`` and ``basics.end_time`` are rewritten (plus the new
-``basics.utc_offset_hours``). The timeline is a series of elapsed seconds, so it
-is unaffected. Everything else on the dive is left untouched.
+Only ``basics.start_time`` and ``basics.end_time`` are rewritten, and the UTC
+instants they used to hold are kept in ``basics.start_time_utc`` /
+``basics.end_time_utc`` alongside ``basics.utc_offset_hours``. The timeline is a
+series of elapsed seconds, so it is unaffected. Everything else on the dive is
+left untouched.
 
 Pickles are matched to their .fit file by dive start time, so this is safe to
 re-run: a dive that already holds local time no longer matches its file's UTC
-anchor, and dives carrying an offset are skipped outright.
+anchor, and dives already carrying both readings are skipped outright.
 
 Dry run (prints what would change, writes nothing):
 
@@ -114,9 +116,26 @@ def main() -> int:
             unmatched.append(pickle_path.name)
             continue
 
-        # A dive that already carries an offset has been converted.
-        if getattr(dive.basics, "utc_offset_hours", None) is not None:
-            already_local.append(pickle_path.name)
+        # A dive that already carries an offset has been converted. It may still
+        # predate start_time_utc, in which case fill that in from the offset
+        # rather than converting a second time.
+        stored_offset = getattr(dive.basics, "utc_offset_hours", None)
+        if stored_offset is not None:
+            if getattr(dive.basics, "start_time_utc", None) is None:
+                back = timedelta(hours=stored_offset)
+                dive.basics.start_time_utc = dive.basics.start_time - back
+                dive.basics.end_time_utc = dive.basics.end_time - back
+                updated.append(
+                    f"{pickle_path.name[:38]:40} {dive.basics.start_time} local "
+                    f"-> UTC {dive.basics.start_time_utc} added"
+                )
+                if args.apply:
+                    if not args.no_backup:
+                        shutil.copy2(pickle_path, pickle_path.with_suffix(".pickle.bak"))
+                    with open(pickle_path, "wb") as fh:
+                        pickle.dump(dive, fh)
+            else:
+                already_local.append(pickle_path.name)
             continue
 
         fit_path = find_match(dive.basics.start_time, index)
@@ -129,6 +148,11 @@ def main() -> int:
             no_offset.append(pickle_path.name)
             continue
 
+        # The stored times are still the raw UTC anchors, so keep them as such
+        # before shifting the local pair.
+        dive.basics.start_time_utc = dive.basics.start_time
+        dive.basics.end_time_utc = dive.basics.end_time
+
         old_start = dive.basics.start_time
         dive.basics.start_time = old_start + offset
         dive.basics.end_time = dive.basics.end_time + offset
@@ -136,7 +160,7 @@ def main() -> int:
 
         updated.append(
             f"{pickle_path.name[:38]:40} {old_start} -> {dive.basics.start_time}  "
-            f"({dive.basics.utc_offset_hours:+.0f}h)"
+            f"({dive.basics.utc_offset_hours:+.0f}h,  UTC kept)"
         )
 
         if args.apply:

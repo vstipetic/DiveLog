@@ -88,6 +88,18 @@ class DiveBasicInformation:
     3.0 for Egypt in summer). None on dives imported before local time was
     recorded, whose times are still stored as UTC."""
 
+    start_time_utc: Optional[datetime] = None
+
+    """The same instant as start_time, standardised to UTC. Local time is what
+    the diver logged and what every question about the dive means, but UTC is
+    the only way to order dives from different time zones on one absolute
+    timeline. Naive, like start_time. None on dives imported before this was
+    recorded."""
+
+    end_time_utc: Optional[datetime] = None
+
+    """The same instant as end_time, standardised to UTC."""
+
 
 @dataclass
 class Location:

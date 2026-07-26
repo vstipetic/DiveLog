@@ -64,9 +64,14 @@ All notable changes to DiveLog are documented in this file.
   `activity` message, which records the same instant as both `timestamp` (UTC)
   and `local_timestamp` — no timezone database needed and already correct for
   daylight saving. Verified against Garmin Connect's `startTimeLocal`: all 78
-  agree exactly. `DiveBasicInformation` gained `utc_offset_hours` so UTC stays
-  recoverable; it is `None` on dives imported before this change. Times remain
-  naive datetimes, so they stay comparable with everything else in the app.
+  agree exactly. Times remain naive datetimes, so they stay comparable with
+  everything else in the app.
+- `DiveBasicInformation` gained three fields: `start_time_utc` / `end_time_utc`
+  hold the same instants standardised to UTC — local time is what the diver
+  logged and what every question about a dive means, but UTC is the only way to
+  order dives from different time zones on one absolute timeline — and
+  `utc_offset_hours` records how far ahead of UTC the site was. All three are
+  `None` on dives imported before this change.
 - `repair_dive_times.py` converts dives already on disk from UTC to local,
   rewriting only the start/end times. Dry-run by default; `--apply` to write.
 

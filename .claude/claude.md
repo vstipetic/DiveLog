@@ -207,7 +207,7 @@ class Dive:
 **Nested Structures:**
 
 - `DiveTimeline`: Lists of depths (meters), temperatures (Celsius), N2 loads, CNS loads, and timestamps (seconds from start)
-- `DiveBasicInformation`: Duration (seconds), start_time, end_time (naive datetimes in the dive site's **local** time), utc_offset_hours (Optional[float], hours ahead of UTC; `None` on dives imported before local time was recorded)
+- `DiveBasicInformation`: Duration (seconds), start_time, end_time (naive datetimes in the dive site's **local** time — the time the watch was showing underwater), start_time_utc, end_time_utc (Optional[datetime], the same instants standardised to UTC, for ordering dives across time zones), utc_offset_hours (Optional[float], hours ahead of UTC). The three optional fields are `None` on dives imported before local time was recorded
 - `People`: buddy (str), divemaster (Optional[str]), group (Optional[Set[str]])
 - `Location`: name (str), entry (Optional[Tuple[float, float]]), exit (Optional[Tuple[float, float]]), description (Optional[str])
 - `Gasses`: gas (str: 'air'|'nitrox'|'trimix'), start_pressure (int), end_pressure (int)
