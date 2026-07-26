@@ -1,0 +1,91 @@
+<section class="panel">
+  <h3>Bulk Import</h3>
+
+  <div class="auto-extracted">
+    <strong>✨ Auto-Extracted from .fit Files</strong>
+    <ul>
+      <li><strong>GPS coordinates</strong> from session data</li>
+      <li><strong>Gas type</strong> (air/nitrox/trimix) and O2%</li>
+      <li><strong>All timeline data</strong> (depth, temperature, N2/CNS loads)</li>
+      <li><strong>Dive summary</strong> (dive number, surface interval, etc.)</li>
+    </ul>
+  </div>
+
+  <div class="manual-input">
+    <strong>⚠️ Not Available in .fit Files</strong><br>
+    These fields will be empty after bulk import:
+    <ul>
+      <li><strong>Location name</strong> (NOT stored by Garmin!)</li>
+      <li>Location description</li>
+      <li>Buddy, divemaster, group members</li>
+      <li>Tank pressures (NOT stored by Garmin)</li>
+      <li>Gear and weights</li>
+    </ul>
+  </div>
+
+  <form method="post" action="{{ url_for('imports.scan_bulk') }}" class="inline-form">
+    <label for="fit_folder">Folder containing .fit files</label>
+    <input type="text" id="fit_folder" name="fit_folder" value="{{ bulk_folder }}"
+           title="Enter the path to a folder containing .fit files to import">
+    <button type="submit" class="btn">Scan Folder</button>
+  </form>
+
+  {% if not bulk_scan %}
+    <div class="alert alert-warning">Enter a folder path to scan for .fit files.</div>
+  {% else %}
+    <div class="alert alert-success">Found {{ bulk_scan.total }} .fit files</div>
+
+    <details class="panel">
+      <summary>Preview files to import</summary>
+      <ol class="file-list">
+        {% for entry in bulk_scan.previews %}
+          <li>
+            {{ entry.name }}
+            <span class="caption">→ {{ entry.summary }}</span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% if bulk_scan.extra_count > 0 %}
+        <p class="caption">... and {{ bulk_scan.extra_count }} more files</p>
+      {% endif %}
+    </details>
+
+    <form method="post" action="{{ url_for('imports.run_bulk') }}">
+      <label class="checkbox-label">
+        <input type="checkbox" name="copy_fit_files" checked>
+        Copy .fit files to storage
+        <span class="caption">(keep a copy of original .fit files alongside the pickle files)</span>
+      </label>
+      <button type="submit" class="btn btn-primary btn-block">Import All Files</button>
+    </form>
+  {% endif %}
+
+  {% if bulk_results %}
+    <hr>
+    <div class="metric-row">
+      <div class="metric">
+        <div class="metric-label">Successful Imports</div>
+        <div class="metric-value">{{ bulk_results.success_count }}</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Failed Imports</div>
+        <div class="metric-value">{{ bulk_results.error_count }}</div>
+      </div>
+    </div>
+
+    <h4>Auto-Extraction Summary</h4>
+    <div class="metric">
+      <div class="metric-label">GPS Coordinates Extracted</div>
+      <div class="metric-value">{{ bulk_results.gps_extracted }}/{{ bulk_results.success_count }}</div>
+    </div>
+
+    {% if bulk_results.errors %}
+      <details class="panel" open>
+        <summary>Error Details</summary>
+        {% for err in bulk_results.errors %}
+          <div class="alert alert-error"><strong>{{ err.filename }}</strong>: {{ err.error }}</div>
+        {% endfor %}
+      </details>
+    {% endif %}
+  {% endif %}
+</section>

@@ -84,10 +84,10 @@ GARMIN_PASSWORD=your-garmin-password
 ### Running the Application
 
 ```bash
-uv run streamlit run streamlit_app.py
+uv run python app.py
 ```
 
-This opens a web interface in your browser (default: `http://localhost:8501`) with three tabs:
+Then open `http://localhost:5000` in your browser. The web interface has three tabs:
 
 ### AI Chat Tab
 Ask questions about your dives in natural language. The AI agent can:
@@ -128,15 +128,28 @@ Create and manage your diving equipment:
 
 ## Project Structure
 
+The application is split into a Flask backend and a Jinja2 frontend, on top of
+a shared core (`Utilities/`) that also hosts the AI agent and its tools:
+
 ```
 DiveLog/
-├── streamlit_app.py          # Main application (run this)
+├── app.py                    # Entry point (run this)
+├── backend/                  # Flask backend
+│   ├── state.py              # Server-side session state (agent, chat, Garmin)
+│   ├── services/             # Application logic wrapping Utilities/
+│   └── routes/               # HTML routes + JSON chat API
+├── frontend/                 # Jinja2 frontend
+│   ├── templates/            # Page templates (chat, import, gear)
+│   └── static/               # CSS + JS (charts rendered with vega-embed)
 ├── Storage/
 │   ├── Dives/                # Your dive files
 │   ├── Gear/                 # Your gear files
 │   └── BulkDives/            # Bulk imported dives
-└── Utilities/                # Core logic
+└── Utilities/                # Core logic + StatisticsAgent and agent tools
 ```
+
+The AI chat uses a small JSON API (`POST /api/chat`); charts created by the
+agent's chart tools are serialized to Vega-Lite and rendered in the browser.
 
 ## Supported Hardware
 

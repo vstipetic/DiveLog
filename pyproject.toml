@@ -1,6 +1,6 @@
 [project]
 name = "divelog"
-version = "1.1.0"
+version = "2.0.0"
 description = "Dive log management with AI-powered statistics analysis"
 authors = [
     {name = "vstipetic", email = "vedran.stipetic@gmail.com"}
@@ -20,8 +20,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
     # Garmin Connect integration (download dive .fit files directly)
     "garminconnect>=0.2.0",
-    # Streamlit for UI
-    "streamlit>=1.40.0,<2.0.0",
+    # Flask backend (frontend is rendered with Jinja2, bundled with Flask)
+    "flask>=3.0.0,<4.0.0",
     # Data visualization
     "pandas>=2.0.0",
     "altair>=5.0.0",

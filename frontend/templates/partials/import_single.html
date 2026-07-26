@@ -1,0 +1,174 @@
+<section class="panel">
+  <h3>Single Dive Import</h3>
+
+  <form method="post" action="{{ url_for('imports.upload_single') }}" enctype="multipart/form-data" class="inline-form">
+    <label for="fit_file">Upload .fit file</label>
+    <input type="file" id="fit_file" name="fit_file" accept=".fit">
+    <button type="submit" class="btn">Load File</button>
+  </form>
+
+  {% if not pending_upload %}
+    <div class="alert alert-info">Upload a .fit file to begin importing a dive.</div>
+  {% else %}
+    {% set auto = pending_upload.preview.auto_extracted %}
+    <p class="caption">Loaded file: <strong>{{ pending_upload.filename }}</strong></p>
+
+    <h4>Auto-Extracted Data</h4>
+    <div class="auto-extracted">
+      <div class="metric-row">
+        <div class="metric">
+          <div class="metric-label">Dive #</div>
+          <div class="metric-value">{{ auto.get('dive_number', 'N/A') }}</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Max Depth</div>
+          <div class="metric-value">{{ "%.1f"|format(auto.get('max_depth', 0) or 0) }}m</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Duration</div>
+          <div class="metric-value">{{ auto.get('duration', 0) | duration }}</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Gas</div>
+          <div class="metric-value">{{ (auto.get('gas_type', 'air') or 'air') | title }}</div>
+        </div>
+      </div>
+      <div class="metric-row">
+        <div class="metric">
+          <div class="metric-label">Date</div>
+          <div class="metric-value">{{ auto.start_time.strftime("%Y-%m-%d") if auto.get('start_time') else 'N/A' }}</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Avg Depth</div>
+          <div class="metric-value">{{ "%.1f"|format(auto.get('avg_depth', 0) or 0) }}m</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Water Temp</div>
+          <div class="metric-value">{{ auto.get('avg_temperature', 'N/A') }}°C</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Water Type</div>
+          <div class="metric-value">{{ (auto.get('water_type', 'unknown') or 'unknown') | string | title }}</div>
+        </div>
+      </div>
+      {% if auto.get('entry_coordinates') %}
+        <p class="caption">📍 GPS: {{ "%.6f"|format(auto.entry_coordinates[0]) }}, {{ "%.6f"|format(auto.entry_coordinates[1]) }}</p>
+      {% endif %}
+      {% if auto.get('surface_interval') %}
+        <p class="caption">⏱️ Surface interval: {{ auto.surface_interval | surface_interval }}</p>
+      {% endif %}
+    </div>
+
+    <h4>Manual Input Required</h4>
+    <div class="manual-input">
+      <p class="caption">The following fields are NOT stored in .fit files and require manual entry:</p>
+      <p class="caption">• Buddy, divemaster, group • Location description • Tank pressures • Gear/weights</p>
+    </div>
+
+    <h4>Dive Metadata</h4>
+    <form method="post" action="{{ url_for('imports.confirm_single') }}">
+      <input type="hidden" name="token" value="{{ pending_upload.token }}">
+
+      <details class="panel" open>
+        <summary>People</summary>
+        <div class="form-grid">
+          <div>
+            <label for="buddy">Buddy Name</label>
+            <input type="text" id="buddy" name="buddy" title="Name of your dive buddy">
+          </div>
+          <div>
+            <label for="divemaster">Divemaster (optional)</label>
+            <input type="text" id="divemaster" name="divemaster" title="Name of the divemaster">
+          </div>
+        </div>
+        <label for="group">Group Members (optional)</label>
+        <input type="text" id="group" name="group"
+               title="Comma-separated list of other people in the dive group">
+      </details>
+
+      <details class="panel" open>
+        <summary>Location</summary>
+        <label for="location_name">Location Name</label>
+        <input type="text" id="location_name" name="location_name"
+               title="Name of the dive site (NOT stored in .fit files)">
+        <label for="location_description">Location Description (optional)</label>
+        <textarea id="location_description" name="location_description" rows="3"
+                  title="Additional details about the dive location"></textarea>
+      </details>
+
+      <details class="panel" open>
+        <summary>Tank Pressures</summary>
+        <p class="caption">⚠️ Tank pressures are NOT stored in .fit files - you must enter them manually</p>
+        <div class="form-grid">
+          <div>
+            <label for="start_pressure">Start Pressure (bar)</label>
+            <input type="number" id="start_pressure" name="start_pressure" min="0" max="300" value="200">
+          </div>
+          <div>
+            <label for="end_pressure">End Pressure (bar)</label>
+            <input type="number" id="end_pressure" name="end_pressure" min="0" max="300" value="50">
+          </div>
+        </div>
+      </details>
+
+      <details class="panel" open>
+        <summary>Gear Selection</summary>
+        <div class="form-grid">
+          <div>
+            <label for="suit">Suit</label>
+            <select id="suit" name="suit">
+              <option value="None">None</option>
+              {% for name in gear_items['Suit'] %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+            </select>
+
+            <label for="mask">Mask (optional)</label>
+            <select id="mask" name="mask">
+              <option value="None">None</option>
+              {% for name in gear_items['Mask'] %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+            </select>
+
+            <label for="bcd">BCD (optional)</label>
+            <select id="bcd" name="bcd">
+              <option value="None">None</option>
+              {% for name in gear_items['BCD'] %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="gloves">Gloves (optional)</label>
+            <select id="gloves" name="gloves">
+              <option value="None">None</option>
+              {% for name in gear_items['Gloves'] %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+            </select>
+
+            <label for="boots">Boots (optional)</label>
+            <select id="boots" name="boots">
+              <option value="None">None</option>
+              {% for name in gear_items['Boots'] %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+            </select>
+
+            <label for="fins">Fins (optional)</label>
+            <select id="fins" name="fins">
+              <option value="None">None</option>
+              {% for name in gear_items['Fins'] %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <label for="weights">Weights (kg)</label>
+        <input type="number" id="weights" name="weights" min="0" max="30" step="0.5" value="0">
+
+        {% if not gear_items['Suit'] and not gear_items['Mask'] %}
+          <div class="alert alert-info">
+            No gear found in Storage/Gear/. You can still import the dive without gear.
+          </div>
+        {% endif %}
+      </details>
+
+      <button type="submit" class="btn btn-primary btn-block">Import Dive</button>
+    </form>
+
+    <form method="post" action="{{ url_for('imports.cancel_single') }}">
+      <button type="submit" class="btn btn-block">Cancel Upload</button>
+    </form>
+  {% endif %}
+</section>
