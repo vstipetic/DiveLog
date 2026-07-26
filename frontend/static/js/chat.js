@@ -10,10 +10,20 @@
   const input = document.getElementById("chat-input");
   const spinner = document.getElementById("chat-spinner");
 
+  // The JSON API rejects unsafe requests without this token (backend/security.py).
+  const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+  const csrfToken = csrfMeta ? csrfMeta.content : "";
+
+  // Render markdown in place, replacing the element's plain-text content.
+  //
+  // Agent responses quote free text that came out of dive pickles and Garmin
+  // activity notes, and marked passes raw HTML straight through, so its output
+  // must be sanitized before it goes anywhere near innerHTML. If either library
+  // is unavailable (offline, blocked CDN) we fail closed: the element keeps the
+  // escaped plain text it was rendered with instead of receiving unsafe HTML.
   function renderMarkdown(el) {
-    if (window.marked) {
-      el.innerHTML = window.marked.parse(el.textContent);
-    }
+    if (!window.marked || !window.DOMPurify) return;
+    el.innerHTML = window.DOMPurify.sanitize(window.marked.parse(el.textContent));
   }
 
   function renderChart(el) {
@@ -85,7 +95,10 @@
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken,
+        },
         body: JSON.stringify({ message: query }),
       });
       const data = await response.json();

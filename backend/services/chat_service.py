@@ -10,6 +10,7 @@ Vega-Lite JSON here so the browser can render them with vega-embed.
 """
 
 import json
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from Utilities.StatisticsAgent import StatisticsAgent
@@ -33,7 +34,11 @@ def get_agent() -> Optional[StatisticsAgent]:
         or state.agent.api_key != state.api_key
         or state.agent.provider != state.provider
         or state.agent.model != state.model
-        or str(state.agent.dive_folder) != state.storage_folder
+        # Compare as Path, not str: the agent normalises the folder it was
+        # given (on Windows "Storage/BulkDives" becomes "Storage\\BulkDives"),
+        # so a string comparison never matches and would rebuild the agent --
+        # and drop its chat history -- on every single request.
+        or state.agent.dive_folder != Path(state.storage_folder)
     ):
         try:
             state.agent = StatisticsAgent(

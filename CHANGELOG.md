@@ -25,6 +25,41 @@ All notable changes to DiveLog are documented in this file.
   all other interactions are classic form posts rendered server-side.
 - Dependencies: `streamlit` removed, `flask` added.
 
+**Bulk and Garmin imports run in the background**
+- Long imports no longer block the request. They run on a worker thread and
+  the page shows a live progress bar, the file being processed, and a
+  per-file status row (depth/duration/location on success, the error on
+  failure) — restoring the progress feedback the Streamlit UI had, and adding
+  a per-file result list that persists after the run finishes.
+- Progress is polled from `GET /import/progress`; the page reloads itself into
+  the results panel when the run completes. One import runs at a time.
+
+### Fixed
+
+- The agent is no longer rebuilt on every request. `get_agent()` compared a
+  normalised `Path` against a raw string, which never matched on Windows, so
+  each page load and each chat message constructed a fresh `StatisticsAgent` —
+  re-reading every dive pickle and, worse, silently discarding the
+  conversation history so follow-up questions lost all context.
+- The Garmin date range no longer resets to the last-90-days default on every
+  render. The selected range is kept in server state and echoed back into the
+  form, so it survives the post/redirect after "Fetch dives".
+
+### Security
+
+- **CSRF protection** on every state-changing endpoint (`backend/security.py`).
+  The app has no login and binds to localhost, so cross-origin form posts could
+  previously drive it from any page open in the browser — changing the storage
+  folder, starting an import, or posting to the Garmin login route. Requests
+  that change state must now echo a per-session token (`_csrf_token` form field
+  or `X-CSRF-Token` header). Streamlit had equivalent XSRF protection built in.
+- **Chat markdown is sanitized** before rendering. `marked` passes raw HTML
+  through, and agent responses quote free text from dive pickles and Garmin
+  activity notes, so a crafted dive note could execute script in the page.
+  Output now goes through DOMPurify, and rendering fails closed to plain text
+  if the sanitizer is unavailable.
+- The session cookie is now `HttpOnly` and `SameSite=Lax`.
+
 ### Added
 
 **Import from Garmin Connect**

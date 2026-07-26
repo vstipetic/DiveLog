@@ -19,4 +19,7 @@ if __name__ == "__main__":
         host=os.environ.get("DIVELOG_HOST", "127.0.0.1"),
         port=int(os.environ.get("DIVELOG_PORT", "5000")),
         debug=os.environ.get("DIVELOG_DEBUG", "").lower() in ("1", "true", "yes"),
+        # Imports run on a worker thread and the page polls for progress while
+        # they do, so the server has to handle overlapping requests.
+        threaded=True,
     )

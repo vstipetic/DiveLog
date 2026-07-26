@@ -6,6 +6,7 @@
   <div class="alert alert-info">Create new gear items that can be associated with your dives.</div>
 
   <form method="post" action="{{ url_for('gear.add_gear') }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <section class="panel">
       <label for="gear_type">Gear Type</label>
       <select id="gear_type" name="gear_type" title="Select the type of gear to add">

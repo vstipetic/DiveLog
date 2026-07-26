@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}DiveLog - AI Assistant{% endblock %}</title>
+  {# Lets fetch()-based callers (chat.js) send the token the JSON API requires. #}
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   {% block head %}{% endblock %}
 </head>
@@ -27,6 +29,7 @@
       </div>
     {% else %}
       <form method="post" action="{{ url_for('settings.set_provider') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="next" value="{{ request.full_path }}">
         <label for="key_name">Select LLM Provider</label>
         <select id="key_name" name="key_name" onchange="this.form.submit()">
@@ -53,10 +56,12 @@
     <hr>
     <h3>Quick Actions</h3>
     <form method="post" action="{{ url_for('settings.reload_dives') }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="next" value="{{ request.full_path }}">
       <button type="submit" class="btn btn-block">🔄 Reload Dives</button>
     </form>
     <form method="post" action="{{ url_for('settings.clear_chat') }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="next" value="{{ request.full_path }}">
       <button type="submit" class="btn btn-block">🗑️ Clear Chat</button>
     </form>

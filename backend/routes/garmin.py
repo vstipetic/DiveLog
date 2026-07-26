@@ -1,10 +1,8 @@
 """Routes for the 'Import from Garmin' flow (login, MFA, fetch, import)."""
 
-from datetime import datetime, timedelta
-
 from flask import Blueprint, flash, redirect, request, url_for
 
-from backend.services import garmin_service
+from backend.services import garmin_service, progress
 from backend.state import state
 
 garmin_bp = Blueprint("garmin", __name__, url_prefix="/garmin")
@@ -61,8 +59,7 @@ def logout():
 @garmin_bp.post("/fetch")
 def fetch_dives():
     """Fetch diving activities in the selected date range."""
-    default_start = (datetime.now().date() - timedelta(days=90)).strftime("%Y-%m-%d")
-    default_end = datetime.now().date().strftime("%Y-%m-%d")
+    default_start, default_end = garmin_service.default_date_range()
     start_date = request.form.get("start_date") or default_start
     end_date = request.form.get("end_date") or default_end
 
@@ -81,7 +78,7 @@ def fetch_dives():
 
 @garmin_bp.post("/import")
 def import_selected():
-    """Download and import the selected dives."""
+    """Start downloading and importing the selected dives."""
     selected_ids = request.form.getlist("dive_ids")
     if not selected_ids:
         flash("No dives selected.", "warning")
@@ -91,7 +88,22 @@ def import_selected():
         flash("Not connected to Garmin Connect.", "error")
         return _garmin_redirect()
 
+    if progress.job_running():
+        flash("An import is already running. Wait for it to finish.", "warning")
+        return _garmin_redirect()
+
     use_ai = request.form.get("use_ai") == "on"
-    garmin_service.download_and_import(selected_ids, use_ai)
-    flash("Import complete! Agent cache cleared. New dives will be loaded on next query.", "success")
+    # Resolve display labels now, on the request thread, while the fetched dive
+    # list is known to match the selection.
+    labels = garmin_service.dive_labels()
+
+    state.garmin_results = None
+    state.import_job = progress.start_job(
+        "garmin",
+        len(selected_ids),
+        lambda job: garmin_service.download_and_import(
+            selected_ids, use_ai, job, labels
+        ),
+    )
+    flash(f"Importing {len(selected_ids)} dives from Garmin...", "info")
     return _garmin_redirect()

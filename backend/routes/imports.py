@@ -3,9 +3,9 @@
 import traceback
 from pathlib import Path
 
-from flask import Blueprint, flash, redirect, request, url_for
+from flask import Blueprint, flash, jsonify, redirect, request, url_for
 
-from backend.services import chat_service, gear_service, import_service
+from backend.services import chat_service, gear_service, import_service, progress
 from backend.state import state
 
 imports_bp = Blueprint("imports", __name__, url_prefix="/import")
@@ -133,13 +133,35 @@ def scan_bulk():
 
 @imports_bp.post("/bulk/run")
 def run_bulk():
-    """Import all .fit files from the scanned folder."""
+    """Start importing all .fit files from the scanned folder."""
     folder = state.bulk_folder
     if not folder or not Path(folder).is_dir():
         flash("Scan a folder containing .fit files first.", "error")
         return _import_redirect("bulk")
 
+    if progress.job_running():
+        flash("An import is already running. Wait for it to finish.", "warning")
+        return _import_redirect("bulk")
+
     copy_fit_files = request.form.get("copy_fit_files") == "on"
-    state.bulk_results = import_service.run_bulk_import(folder, copy_fit_files)
-    flash("Import complete! Agent cache cleared. New dives will be loaded on next query.", "success")
+    total = import_service.count_fit_files(folder)
+
+    # The import runs on a worker thread; the page polls /import/progress and
+    # reloads itself when the job reports finished.
+    state.bulk_results = None
+    state.import_job = progress.start_job(
+        "bulk",
+        total,
+        lambda job: import_service.run_bulk_import(folder, copy_fit_files, job),
+    )
+    flash(f"Importing {total} .fit files...", "info")
     return _import_redirect("bulk")
+
+
+# --- Progress ------------------------------------------------------------------
+
+@imports_bp.get("/progress")
+def import_progress():
+    """Snapshot of the running import, polled by frontend/static/js/import.js."""
+    job = state.import_job
+    return jsonify({"ok": True, "job": job.snapshot() if job else None})

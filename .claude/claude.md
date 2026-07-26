@@ -14,7 +14,9 @@ The application follows a modular architecture with clear separation of concerns
    - Flask application factory (`backend/__init__.py`)
    - `backend/state.py` - Server-side session state (agent instance, chat transcript, Garmin client)
    - `backend/services/` - Application logic wrapping `Utilities/` (chat/agent lifecycle, imports, Garmin, gear, settings)
-   - `backend/routes/` - HTML routes (AI Chat, Import Dives, Add Gear) plus a JSON chat API (`POST /api/chat`)
+   - `backend/services/progress.py` - Background `ImportJob` tracker; bulk/Garmin imports run on a worker thread and report per-file progress
+   - `backend/security.py` - CSRF protection for every state-changing request
+   - `backend/routes/` - HTML routes (AI Chat, Import Dives, Add Gear) plus a JSON chat API (`POST /api/chat`) and a progress endpoint (`GET /import/progress`)
    - `DiveFilterer.py` - Filter utility functions (root directory)
 
 1b. **Frontend Layer** (`frontend/`)
@@ -352,12 +354,13 @@ DiveLog/
 ├── backend/                      # Flask backend
 │   ├── __init__.py               # Application factory
 │   ├── state.py                  # Server-side session state
+│   ├── security.py               # CSRF token issuing + validation
 │   ├── utils.py                  # Formatting helpers (also Jinja filters)
-│   ├── services/                 # chat, imports, Garmin, gear, settings
-│   └── routes/                   # Page routes + JSON chat API
+│   ├── services/                 # chat, imports, Garmin, gear, settings, progress
+│   └── routes/                   # Page routes + JSON chat API + progress endpoint
 ├── frontend/                     # Jinja2 frontend
 │   ├── templates/                # base, chat, import (+ partials), gear
-│   └── static/                   # css/style.css, js/chat.js, js/gear.js
+│   └── static/                   # css/style.css, js/chat.js, js/gear.js, js/import.js
 ├── DiveFilterer.py               # Root-level filter utilities
 ├── explorer.ipynb                # Jupyter notebook (exploration/testing)
 ├── pyproject.toml                # uv/pip dependencies
@@ -398,7 +401,7 @@ DiveLog/
         ├── SearchTool.py          # 3 search tools (uses ConfigDict)
         ├── ChartTools.py          # 4 visualization tools (Altair charts)
         ├── ToolState.py           # Shared state for filter→statistics chaining
-        └── ChartState.py          # Shared state for chart→Streamlit rendering
+        └── ChartState.py          # Shared state for chart→UI rendering
 ```
 
 ## Query Examples
