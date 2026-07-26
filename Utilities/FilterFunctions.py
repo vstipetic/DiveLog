@@ -7,7 +7,7 @@ They are used by both the filtering utilities and the agent tool layer.
 
 from Utilities.ClassUtils.DiveClass import Dive
 import datetime
-from typing import Optional
+from typing import Optional, Set
 
 
 def dive_was_deeper_than(dive_data: Dive, depth: float) -> bool:
@@ -161,6 +161,106 @@ def dive_had_buddy(dive_data: Dive, buddy_name: str) -> bool:
     if not dive_data.people.buddy:
         return False
     return buddy_name.lower() in dive_data.people.buddy.lower()
+
+
+def dive_people_names(dive_data: Dive) -> Set[str]:
+    """Collect every person recorded on a dive.
+
+    The buddy is usually also listed in the group, so the result is a set:
+    each person appears once regardless of how many roles they held.
+
+    Args:
+        dive_data: Dive object to inspect
+
+    Returns:
+        Set of names (buddy, divemaster and all group members), empty if the
+        dive has no people recorded
+    """
+    names: Set[str] = set()
+
+    if dive_data.people.buddy:
+        names.add(dive_data.people.buddy)
+    if dive_data.people.divemaster:
+        names.add(dive_data.people.divemaster)
+    if dive_data.people.group:
+        names.update(name for name in dive_data.people.group if name)
+
+    return names
+
+
+def dive_had_person_in_group(dive_data: Dive, person_name: str) -> bool:
+    """Check if a person was in the dive group.
+
+    Only the group set is consulted. Use :func:`dive_included_person` to match
+    the buddy and divemaster fields as well.
+
+    Args:
+        dive_data: Dive object to check
+        person_name: Name to search for (case-insensitive partial match)
+
+    Returns:
+        True if any group member's name contains person_name
+    """
+    if not dive_data.people.group:
+        return False
+
+    needle = person_name.lower()
+    return any(needle in member.lower() for member in dive_data.people.group if member)
+
+
+def dive_had_divemaster(dive_data: Dive, divemaster_name: str) -> bool:
+    """Check if a specific person led the dive.
+
+    Args:
+        dive_data: Dive object to check
+        divemaster_name: Name to search for (case-insensitive partial match)
+
+    Returns:
+        True if the divemaster's name contains divemaster_name
+    """
+    if not dive_data.people.divemaster:
+        return False
+    return divemaster_name.lower() in dive_data.people.divemaster.lower()
+
+
+def dive_included_person(
+    dive_data: Dive,
+    person_name: str,
+    role: str = "any"
+) -> bool:
+    """Check if a person was on a dive, in any role or a specific one.
+
+    ``dive_had_buddy`` only looks at the buddy field, which misses people who
+    were on the dive but were not the designated buddy. This checks the whole
+    party by default.
+
+    Args:
+        dive_data: Dive object to check
+        person_name: Name to search for (case-insensitive partial match)
+        role: Which role to match - 'any' (buddy, divemaster or group),
+            'buddy', 'divemaster' or 'group'
+
+    Returns:
+        True if the person matches in the requested role
+
+    Raises:
+        ValueError: If role is not one of the recognised values
+    """
+    role = (role or "any").lower()
+
+    if role == "buddy":
+        return dive_had_buddy(dive_data, person_name)
+    if role == "divemaster":
+        return dive_had_divemaster(dive_data, person_name)
+    if role == "group":
+        return dive_had_person_in_group(dive_data, person_name)
+    if role == "any":
+        needle = person_name.lower()
+        return any(needle in name.lower() for name in dive_people_names(dive_data))
+
+    raise ValueError(
+        f"Unknown role: {role}. Use 'any', 'buddy', 'divemaster' or 'group'."
+    )
 
 
 def dive_was_at_location(dive_data: Dive, location_name: str) -> bool:

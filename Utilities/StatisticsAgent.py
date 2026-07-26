@@ -28,6 +28,7 @@ from Utilities.Tools.FilterTool import (
     FilterDivesByDateTool,
     FilterDivesByDurationTool,
     FilterDivesByBuddyTool,
+    FilterDivesByPersonTool,
     FilterDivesByLocationTool,
     FilterDivesByStartTimeTool,
     FilterDivesByTemperatureTool,
@@ -39,6 +40,7 @@ from Utilities.Tools.FilterTool import (
 from Utilities.Tools.StatisticsTool import (
     CalculateStatisticTool,
     CalculateTimeBelowDepthTool,
+    CountDivesWithPersonTool,
 )
 from Utilities.Tools.SearchTool import (
     SearchDivesTool,
@@ -68,13 +70,25 @@ When answering questions about dives:
 5. If you can't find exact information, explain what you can provide
 
 Available capabilities:
-- Filter dives by: depth, date, duration, buddy, location, start time (morning/afternoon),
-  water temperature, CNS oxygen toxicity load, gas type (air/nitrox/trimix),
-  and continuous time at specific depth
-- Calculate statistics: averages, totals, counts, breakdowns by time/location/buddy/gas
+- Filter dives by: depth, date, duration, buddy, any person present, location,
+  start time (morning/afternoon), water temperature, CNS oxygen toxicity load,
+  gas type (air/nitrox/trimix), and continuous time at specific depth
+- Calculate statistics: averages, totals, counts, breakdowns by time/location/person/gas
 - Search for dives by text in various fields
 - Get detailed information about specific dives
 - List all dives with sorting options
+
+PEOPLE ON A DIVE:
+
+Each dive records a designated buddy, an optional divemaster, and a group of
+everyone else who was there. Someone is frequently in the group without being
+the designated buddy, so buddy-only tools undercount them.
+
+- "How many dives with X?" / "have I dived with X?" -> count_dives_with_person,
+  or filter_dives_by_person. Do NOT use filter_dives_by_buddy for these.
+- "Who do I dive with most?" -> calculate_statistic("most_common_dive_partner").
+- Use filter_dives_by_buddy and the *_buddy statistics only when the user
+  specifically asks about the designated buddy rather than the whole party.
 - Create visualizations: histograms (depth/duration/temperature distributions),
   bar charts (dives by month/year/location/buddy), pie charts (proportional breakdowns),
   scatter plots (relationships between metrics like depth vs duration, with optional color coding by category)
@@ -248,6 +262,7 @@ class StatisticsAgent:
             FilterDivesByDateTool(dives=self.dives),
             FilterDivesByDurationTool(dives=self.dives),
             FilterDivesByBuddyTool(dives=self.dives),
+            FilterDivesByPersonTool(dives=self.dives),
             FilterDivesByLocationTool(dives=self.dives),
             FilterDivesByStartTimeTool(dives=self.dives),
             FilterDivesByTemperatureTool(dives=self.dives),
@@ -259,6 +274,7 @@ class StatisticsAgent:
             # Statistics tools - use all_dives as fallback, check ToolState first
             CalculateStatisticTool(all_dives=self.dives),
             CalculateTimeBelowDepthTool(all_dives=self.dives),
+            CountDivesWithPersonTool(all_dives=self.dives),
             # Search tools
             SearchDivesTool(dives=self.dives),
             GetDiveSummaryTool(dives=self.dives),

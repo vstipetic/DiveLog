@@ -14,7 +14,12 @@ from Utilities.Tools.FilterTool import (
     FilterDivesByDateTool,
     FilterDivesByDurationTool,
     FilterDivesByBuddyTool,
+    FilterDivesByPersonTool,
     FilterDivesByLocationTool,
+    FilterDivesByStartTimeTool,
+    FilterDivesByTemperatureTool,
+    FilterDivesByCNSLoadTool,
+    FilterDivesByGasTypeTool,
     FilterDivesByDurationAtDepthTool,
     LabelFilteredDivesTool,
 )
@@ -22,6 +27,7 @@ from Utilities.Tools.FilterTool import (
 from Utilities.Tools.StatisticsTool import (
     CalculateStatisticTool,
     CalculateTimeBelowDepthTool,
+    CountDivesWithPersonTool,
 )
 
 from Utilities.Tools.SearchTool import (
@@ -46,12 +52,18 @@ __all__ = [
     "FilterDivesByDateTool",
     "FilterDivesByDurationTool",
     "FilterDivesByBuddyTool",
+    "FilterDivesByPersonTool",
     "FilterDivesByLocationTool",
+    "FilterDivesByStartTimeTool",
+    "FilterDivesByTemperatureTool",
+    "FilterDivesByCNSLoadTool",
+    "FilterDivesByGasTypeTool",
     "FilterDivesByDurationAtDepthTool",
     "LabelFilteredDivesTool",
     # Statistics tools
     "CalculateStatisticTool",
     "CalculateTimeBelowDepthTool",
+    "CountDivesWithPersonTool",
     # Search tools
     "SearchDivesTool",
     "GetDiveSummaryTool",

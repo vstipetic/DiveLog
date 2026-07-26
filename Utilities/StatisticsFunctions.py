@@ -16,6 +16,7 @@ from typing import List, Dict, Optional
 from collections import defaultdict
 
 from Utilities.ClassUtils.DiveClass import Dive
+from Utilities.FilterFunctions import dive_included_person, dive_people_names
 from Utilities.Schemas.ToolOutputs import StatisticsResult
 
 
@@ -544,6 +545,206 @@ def dives_by_buddy(dives: List[Dive]) -> StatisticsResult:
     )
 
 
+def dives_by_person(dives: List[Dive]) -> StatisticsResult:
+    """Count dives grouped by every person present, not just the buddy.
+
+    ``dives_by_buddy`` only counts the designated buddy, so anyone who was on
+    the dive as part of the group is invisible to it. This counts each person
+    once per dive across the buddy, divemaster and group fields.
+
+    Args:
+        dives: List of Dive objects
+
+    Returns:
+        StatisticsResult with a breakdown by person
+    """
+    if not dives:
+        return StatisticsResult(
+            stat_type="dives_by_person",
+            value=0.0,
+            unit="dives",
+            context="No dives to analyze"
+        )
+
+    person_counts: Dict[str, float] = defaultdict(float)
+    solo_dives = 0
+
+    for dive in dives:
+        names = dive_people_names(dive)
+        if not names:
+            solo_dives += 1
+            continue
+        for name in names:
+            person_counts[name] += 1
+
+    if solo_dives:
+        person_counts["Solo/Unknown"] = float(solo_dives)
+
+    sorted_breakdown = dict(
+        sorted(person_counts.items(), key=lambda x: x[1], reverse=True)
+    )
+
+    named_people = len([k for k in person_counts if k != "Solo/Unknown"])
+
+    return StatisticsResult(
+        stat_type="dives_by_person",
+        value=float(len(dives)),
+        unit="dives",
+        breakdown=sorted_breakdown,
+        context=(
+            f"{named_people} different people across {len(dives)} dives "
+            f"(counts any role: buddy, divemaster or group member)"
+        )
+    )
+
+
+def most_common_dive_partner(dives: List[Dive]) -> StatisticsResult:
+    """Find the person who appears on the most dives, in any role.
+
+    Unlike ``most_common_buddy`` this counts group members too, so it answers
+    "who do I actually dive with most often".
+
+    Args:
+        dives: List of Dive objects
+
+    Returns:
+        StatisticsResult with the most frequent dive partner and their count
+    """
+    if not dives:
+        return StatisticsResult(
+            stat_type="most_common_dive_partner",
+            value=0.0,
+            unit="dives",
+            context="No dives to analyze"
+        )
+
+    person_counts: Dict[str, int] = defaultdict(int)
+    for dive in dives:
+        for name in dive_people_names(dive):
+            person_counts[name] += 1
+
+    if not person_counts:
+        return StatisticsResult(
+            stat_type="most_common_dive_partner",
+            value=0.0,
+            unit="dives",
+            context="No people recorded on these dives"
+        )
+
+    partner_name, count = max(person_counts.items(), key=lambda x: x[1])
+
+    return StatisticsResult(
+        stat_type="most_common_dive_partner",
+        value=float(count),
+        unit="dives",
+        context=f"Most common dive partner: {partner_name}",
+        breakdown=dict(sorted(person_counts.items(), key=lambda x: x[1], reverse=True))
+    )
+
+
+def unique_dive_partners(dives: List[Dive]) -> StatisticsResult:
+    """Count how many distinct people appear across the dives, in any role.
+
+    Args:
+        dives: List of Dive objects
+
+    Returns:
+        StatisticsResult with the number of distinct people
+    """
+    if not dives:
+        return StatisticsResult(
+            stat_type="unique_dive_partners",
+            value=0.0,
+            unit="people",
+            context="No dives to analyze"
+        )
+
+    person_counts: Dict[str, float] = defaultdict(float)
+    for dive in dives:
+        for name in dive_people_names(dive):
+            person_counts[name] += 1
+
+    return StatisticsResult(
+        stat_type="unique_dive_partners",
+        value=float(len(person_counts)),
+        unit="people",
+        breakdown=dict(sorted(person_counts.items(), key=lambda x: x[1], reverse=True)),
+        context=f"{len(person_counts)} different people across {len(dives)} dives"
+    )
+
+
+def count_dives_with_person(dives: List[Dive], person_name: str) -> StatisticsResult:
+    """Count dives with a specific person, split by the role they held.
+
+    Answers "how many dives did I do with X" without the caller having to
+    decide up front whether X was the buddy or just in the group.
+
+    Args:
+        dives: List of Dive objects
+        person_name: Name to search for (case-insensitive partial match)
+
+    Returns:
+        StatisticsResult whose value is the total dive count, with a breakdown
+        by role and the matched names listed in the context
+    """
+    if not dives:
+        return StatisticsResult(
+            stat_type="count_dives_with_person",
+            value=0.0,
+            unit="dives",
+            context="No dives to analyze"
+        )
+
+    as_buddy = 0
+    as_divemaster = 0
+    in_group_only = 0
+    total = 0
+    matched_names = set()
+
+    for dive in dives:
+        if not dive_included_person(dive, person_name, role="any"):
+            continue
+
+        total += 1
+        buddy_match = dive_included_person(dive, person_name, role="buddy")
+        dm_match = dive_included_person(dive, person_name, role="divemaster")
+
+        if buddy_match:
+            as_buddy += 1
+        if dm_match:
+            as_divemaster += 1
+        if not buddy_match and not dm_match:
+            in_group_only += 1
+
+        needle = person_name.lower()
+        matched_names.update(
+            name for name in dive_people_names(dive) if needle in name.lower()
+        )
+
+    breakdown: Dict[str, float] = {
+        "as buddy": float(as_buddy),
+        "in group only": float(in_group_only),
+    }
+    if as_divemaster:
+        breakdown["as divemaster"] = float(as_divemaster)
+
+    if total == 0:
+        context = f"No dives found with anyone matching '{person_name}'"
+    else:
+        context = (
+            f"Matched: {', '.join(sorted(matched_names))} "
+            f"(searched all of buddy, divemaster and group)"
+        )
+
+    return StatisticsResult(
+        stat_type="count_dives_with_person",
+        value=float(total),
+        unit="dives",
+        breakdown=breakdown,
+        context=context
+    )
+
+
 def total_air_consumption(dives: List[Dive]) -> StatisticsResult:
     """Calculate total air consumption across all dives.
 
@@ -929,6 +1130,12 @@ STATISTICS_MAP = {
     "dives_by_buddy": dives_by_buddy,
     "total_air_consumption": total_air_consumption,
     "average_air_consumption_rate": average_air_consumption_rate,
+    # People statistics that count group members, not just the buddy.
+    # (count_dives_with_person is not here: it takes a name argument, so it is
+    # exposed through its own tool, like time_below_depth.)
+    "dives_by_person": dives_by_person,
+    "most_common_dive_partner": most_common_dive_partner,
+    "unique_dive_partners": unique_dive_partners,
     # New statistics
     "most_common_buddy": most_common_buddy,
     "most_visited_location": most_visited_location,
