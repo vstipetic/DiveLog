@@ -57,6 +57,18 @@ All notable changes to DiveLog are documented in this file.
 - `repair_dive_buddies.py` fixes the buddy on dives already on disk, re-reading
   the field from Garmin Connect and rewriting nothing else. Dry-run by default;
   pass `--apply` to write (backs each pickle up to `.pickle.bak`).
+- **Dive times are stored in the dive site's local time.** Every timestamp in a
+  `.fit` file is UTC, and the parser stored it verbatim, so a dive logged at
+  18:16 in Egypt sat in the pickle as 16:16. All 78 dives in the reference log
+  were affected (+1h to +3h). The offset now comes from the `.fit` file's own
+  `activity` message, which records the same instant as both `timestamp` (UTC)
+  and `local_timestamp` — no timezone database needed and already correct for
+  daylight saving. Verified against Garmin Connect's `startTimeLocal`: all 78
+  agree exactly. `DiveBasicInformation` gained `utc_offset_hours` so UTC stays
+  recoverable; it is `None` on dives imported before this change. Times remain
+  naive datetimes, so they stay comparable with everything else in the app.
+- `repair_dive_times.py` converts dives already on disk from UTC to local,
+  rewriting only the start/end times. Dry-run by default; `--apply` to write.
 
 ### Security
 

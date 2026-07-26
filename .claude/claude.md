@@ -94,7 +94,10 @@ The parser (`GarminDiveParser.py`) extracts extensive data from Garmin .fit file
 - `Location.entry` - GPS coordinates from session data (start_position_lat/long)
 - `Gasses.gas` - Gas type (air/nitrox/trimix) based on O2/He percentages from dive_gas message
 - `DiveTimeline` - All depth, temperature, N2/CNS load data from record messages
-- `DiveBasicInformation` - Duration, start/end times
+- `DiveBasicInformation` - Duration, start/end times. `.fit` timestamps are UTC, so
+  the parser shifts them into the dive site's local time using the offset the file's
+  `activity` message records (`local_timestamp` - `timestamp`), and keeps that offset
+  in `utc_offset_hours`
 
 **Auto-Extracted (available via `get_fit_file_metadata()` but not stored in Dive class):**
 - `dive_number` - Sequential dive number from dive_summary message
@@ -204,7 +207,7 @@ class Dive:
 **Nested Structures:**
 
 - `DiveTimeline`: Lists of depths (meters), temperatures (Celsius), N2 loads, CNS loads, and timestamps (seconds from start)
-- `DiveBasicInformation`: Duration (seconds), start_time, end_time (datetime objects)
+- `DiveBasicInformation`: Duration (seconds), start_time, end_time (naive datetimes in the dive site's **local** time), utc_offset_hours (Optional[float], hours ahead of UTC; `None` on dives imported before local time was recorded)
 - `People`: buddy (str), divemaster (Optional[str]), group (Optional[Set[str]])
 - `Location`: name (str), entry (Optional[Tuple[float, float]]), exit (Optional[Tuple[float, float]]), description (Optional[str])
 - `Gasses`: gas (str: 'air'|'nitrox'|'trimix'), start_pressure (int), end_pressure (int)

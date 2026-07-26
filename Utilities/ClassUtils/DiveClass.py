@@ -73,11 +73,20 @@ class DiveBasicInformation:
 
     start_time: datetime
 
-    """Time and date of the start of the dive"""
+    """Time and date of the start of the dive, in the LOCAL time of the dive
+    site: the wall-clock time the diver would say they entered the water. Naive
+    (no tzinfo) so it stays comparable with every other datetime in the app; add
+    utc_offset_hours to recover UTC."""
 
     end_time: datetime
 
-    """Time and date of the end of the dive"""
+    """Time and date of the end of the dive, local like start_time"""
+
+    utc_offset_hours: Optional[float] = None
+
+    """Hours the local time is ahead of UTC (e.g. 2.0 for Croatia in summer,
+    3.0 for Egypt in summer). None on dives imported before local time was
+    recorded, whose times are still stored as UTC."""
 
 
 @dataclass

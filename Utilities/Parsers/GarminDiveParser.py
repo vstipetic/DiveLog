@@ -147,6 +147,9 @@ def parse_timeline(fit_file: FitFile) -> tuple[DiveTimeline, datetime]:
     ``time_to_surface``) are stored as ``None`` when the computer recorded
     nothing at all for that dive, so "no data" stays distinguishable from
     "recorded as zero" -- shallow dives legitimately report no NDL.
+
+    The returned start time is UTC, as .fit records it. Callers that want the
+    dive site's local time add :func:`parse_utc_offset`.
     """
     depths: List[float] = []
     temperatures: List[int] = []
@@ -205,14 +208,58 @@ def _series_or_none(values: List[Optional[float]]) -> Optional[List[Optional[flo
     return values if any(v is not None for v in values) else None
 
 
-def parse_basic_info(timeline: DiveTimeline, start_time: datetime) -> DiveBasicInformation:
-    """Create the basic dive information"""
+def parse_utc_offset(fit_file: FitFile) -> Optional[timedelta]:
+    """
+    Work out how far the dive site's local time is ahead of UTC.
+
+    Every timestamp in a .fit file is UTC -- the format defines it as seconds
+    since 1989-12-31 UTC -- so a dive logged at 18:16 in Egypt reads 16:16. The
+    ``activity`` message is the one place that carries both readings of the same
+    instant, and their difference is the offset that was in force at the time.
+    That beats deriving one from the GPS position: it needs no timezone database
+    and is already correct for daylight saving.
+
+    Returns:
+        The offset as a ``timedelta``, or ``None`` if the file does not carry
+        both timestamps (in which case times have to stay UTC).
+    """
+    for message in fit_file.get_messages('activity'):
+        utc = message.get_value('timestamp')
+        local = message.get_value('local_timestamp')
+        if utc is not None and local is not None:
+            return local - utc
+        break
+
+    return None
+
+
+def parse_basic_info(
+    timeline: DiveTimeline,
+    start_time: datetime,
+    utc_offset: Optional[timedelta] = None
+) -> DiveBasicInformation:
+    """
+    Create the basic dive information.
+
+    ``start_time`` arrives as UTC (straight off the .fit record). When the file
+    tells us the local offset, times are shifted into the dive site's local time
+    so they read the way the diver logged them; the offset is kept alongside so
+    UTC is still recoverable.
+    """
     duration = timeline.timestamps[-1] if timeline.timestamps else 0.0
+
+    if utc_offset is not None:
+        start_time = start_time + utc_offset
+
     end_time = start_time + timedelta(seconds=duration)
+
     return DiveBasicInformation(
         duration=duration,
         start_time=start_time,
-        end_time=end_time
+        end_time=end_time,
+        utc_offset_hours=(
+            utc_offset.total_seconds() / 3600 if utc_offset is not None else None
+        )
     )
 
 
@@ -353,9 +400,10 @@ def parse_garmin_dive(file_path: str, metadata: Optional[Dict[str, Any]] = None)
                  f"avg_hr={session_data.get('avg_heart_rate')}bpm")
     logger.debug(f"  User Profile: weight={user_profile.get('weight')}kg")
 
-    # Parse core timeline and basic info
+    # Parse core timeline and basic info. parse_timeline returns the raw UTC
+    # anchor; parse_basic_info shifts it into the dive site's local time.
     timeline, start_time = parse_timeline(fit_file)
-    basic_info = parse_basic_info(timeline, start_time)
+    basic_info = parse_basic_info(timeline, start_time, parse_utc_offset(fit_file))
     people = parse_people(metadata)
     location = parse_location(fit_file, metadata)
 
@@ -433,6 +481,11 @@ def get_fit_file_metadata(file_path: str) -> Dict[str, Any]:
     user_profile = parse_user_profile(fit_file)
     timeline, start_time = parse_timeline(fit_file)
 
+    # Show the same local time the import will store, not the raw UTC anchor.
+    utc_offset = parse_utc_offset(fit_file)
+    if utc_offset is not None:
+        start_time = start_time + utc_offset
+
     # Extract entry coordinates
     entry_coords = None
     for session in fit_file.get_messages('session'):
@@ -461,6 +514,9 @@ def get_fit_file_metadata(file_path: str) -> Dict[str, Any]:
             'entry_coordinates': entry_coords,
             'dive_number': dive_summary.get('dive_number'),
             'start_time': start_time,
+            'utc_offset_hours': (
+                utc_offset.total_seconds() / 3600 if utc_offset is not None else None
+            ),
             'duration': timeline.timestamps[-1] if timeline.timestamps else 0,
             'max_depth': max(timeline.depths) if timeline.depths else dive_summary.get('max_depth', 0),
             'avg_depth': dive_summary.get('avg_depth'),

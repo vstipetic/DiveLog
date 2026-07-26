@@ -31,7 +31,7 @@ from typing import Dict, List, Optional, Tuple
 
 from fitparse import FitFile
 
-from Utilities.Parsers.GarminDiveParser import parse_timeline
+from Utilities.Parsers.GarminDiveParser import parse_timeline, parse_utc_offset
 
 # Start times can differ by a hair between the stored value and a fresh parse.
 MATCH_TOLERANCE = timedelta(seconds=2)
@@ -39,27 +39,38 @@ MATCH_TOLERANCE = timedelta(seconds=2)
 SERIES = ("ndl_time", "next_stop_depth", "next_stop_time", "time_to_surface")
 
 
-def index_fit_files(fit_folder: Path) -> Dict[Path, datetime]:
-    """Map each .fit file to the start time its timeline parses to."""
-    index: Dict[Path, datetime] = {}
+def index_fit_files(fit_folder: Path) -> Dict[Path, List[datetime]]:
+    """
+    Map each .fit file to the start times a stored dive could carry.
+
+    Dives are stored in the dive site's local time, but were stored in UTC
+    before that was fixed, so both readings are candidates for a match.
+    """
+    index: Dict[Path, List[datetime]] = {}
     for fit_path in sorted(fit_folder.glob("*.fit")):
         try:
-            _, start_time = parse_timeline(FitFile(str(fit_path)))
-            index[fit_path] = start_time
+            fit_file = FitFile(str(fit_path))
+            _, utc_start = parse_timeline(fit_file)
+            candidates = [utc_start]
+            offset = parse_utc_offset(fit_file)
+            if offset:
+                candidates.append(utc_start + offset)
+            index[fit_path] = candidates
         except Exception as e:
             print(f"  ! could not read {fit_path.name}: {e}")
     return index
 
 
 def find_match(
-    start_time: datetime, index: Dict[Path, datetime]
+    start_time: datetime, index: Dict[Path, List[datetime]]
 ) -> Optional[Path]:
     """Find the .fit whose start time matches, within tolerance."""
     best: Optional[Tuple[Path, timedelta]] = None
-    for fit_path, fit_start in index.items():
-        delta = abs(fit_start - start_time)
-        if delta <= MATCH_TOLERANCE and (best is None or delta < best[1]):
-            best = (fit_path, delta)
+    for fit_path, fit_starts in index.items():
+        for fit_start in fit_starts:
+            delta = abs(fit_start - start_time)
+            if delta <= MATCH_TOLERANCE and (best is None or delta < best[1]):
+                best = (fit_path, delta)
     return best[0] if best else None
 
 
