@@ -76,13 +76,24 @@
       <hr>
       <p class="caption">Select dives to download and import. Already-imported dives are pre-unchecked.</p>
 
-      <form method="post" action="{{ url_for('garmin.import_selected') }}">
+      <form method="post" action="{{ url_for('garmin.import_selected') }}" id="garmin-import-form">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+
+        {# Selecting every dive is how you re-import an existing log after a
+           parser change: already-imported dives start unchecked, so without
+           this you would tick them one at a time. #}
+        <div class="checklist-actions">
+          <button type="button" class="btn btn-small" data-select="all">Select all</button>
+          <button type="button" class="btn btn-small" data-select="none">Select none</button>
+          <button type="button" class="btn btn-small" data-select="new">Only not yet imported</button>
+          <span class="caption" id="dive-selection-count"></span>
+        </div>
+
         <div class="dive-checklist">
           {% for dive in garmin_dives %}
             <label class="checkbox-label">
               <input type="checkbox" name="dive_ids" value="{{ dive.activity_id }}"
-                     {% if not dive.imported %}checked{% endif %}>
+                     {% if dive.imported %}data-imported="true"{% else %}checked{% endif %}>
               {{ dive.label }}{% if dive.imported %}  ✓ imported{% endif %}
             </label>
           {% endfor %}
