@@ -141,12 +141,23 @@ def parse_user_profile(fit_file: FitFile) -> Dict[str, Any]:
 
 
 def parse_timeline(fit_file: FitFile) -> tuple[DiveTimeline, datetime]:
-    """Parse the timeline data from the fit file"""
+    """Parse the timeline data from the fit file.
+
+    Decompression series (``ndl_time``, ``next_stop_depth``, ``next_stop_time``,
+    ``time_to_surface``) are stored as ``None`` when the computer recorded
+    nothing at all for that dive, so "no data" stays distinguishable from
+    "recorded as zero" -- shallow dives legitimately report no NDL.
+    """
     depths: List[float] = []
     temperatures: List[int] = []
     n2_loads: List[int] = []
     cns_loads: List[int] = []
     timestamps: List[float] = []
+
+    ndl_times: List[Optional[float]] = []
+    next_stop_depths: List[Optional[float]] = []
+    next_stop_times: List[Optional[float]] = []
+    times_to_surface: List[Optional[float]] = []
 
     start_time: Optional[datetime] = None
 
@@ -158,8 +169,17 @@ def parse_timeline(fit_file: FitFile) -> tuple[DiveTimeline, datetime]:
 
         depths.append(values.get('depth', 0.0))  # Depth is already in meters
         temperatures.append(values.get('temperature', 0))
-        n2_loads.append(values.get('tissue_n2_load', 0))
+        # Garmin names this field 'n2_load'; 'tissue_n2_load' is checked as a
+        # fallback for other devices.
+        n2_loads.append(
+            values.get('n2_load', values.get('tissue_n2_load', 0)) or 0
+        )
         cns_loads.append(values.get('cns_load', 0))
+
+        ndl_times.append(values.get('ndl_time'))
+        next_stop_depths.append(values.get('next_stop_depth'))
+        next_stop_times.append(values.get('next_stop_time'))
+        times_to_surface.append(values.get('time_to_surface'))
 
         if start_time:
             elapsed = (values.get('timestamp') - start_time).total_seconds()
@@ -170,10 +190,19 @@ def parse_timeline(fit_file: FitFile) -> tuple[DiveTimeline, datetime]:
         temperature=temperatures,
         n2_load=n2_loads,
         cns_load=cns_loads,
-        timestamps=timestamps
+        timestamps=timestamps,
+        ndl_time=_series_or_none(ndl_times),
+        next_stop_depth=_series_or_none(next_stop_depths),
+        next_stop_time=_series_or_none(next_stop_times),
+        time_to_surface=_series_or_none(times_to_surface),
     )
 
     return timeline, start_time if start_time else datetime.now()
+
+
+def _series_or_none(values: List[Optional[float]]) -> Optional[List[Optional[float]]]:
+    """Return the series, or None when the computer reported nothing for it."""
+    return values if any(v is not None for v in values) else None
 
 
 def parse_basic_info(timeline: DiveTimeline, start_time: datetime) -> DiveBasicInformation:

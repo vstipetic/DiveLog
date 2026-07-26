@@ -26,6 +26,29 @@ class DiveTimeline:
 
     """List containing the number of seconds that have passed since start of the dive"""
 
+    ndl_time: Optional[List[Optional[float]]] = None
+
+    """Remaining no-decompression limit in seconds at each timestamp. Reaches 0
+    when a decompression obligation is incurred. None when the dive computer
+    recorded no NDL data at all (shallow dives), and an individual entry may be
+    None for samples where it was not reported."""
+
+    next_stop_depth: Optional[List[float]] = None
+
+    """Decompression ceiling in meters at each timestamp: the shallowest depth
+    that may be ascended to. 0 means no ceiling (no decompression obligation).
+    None when the dive computer recorded no ceiling data."""
+
+    next_stop_time: Optional[List[float]] = None
+
+    """Required time in seconds at the current decompression stop. 0 when there
+    is no obligation. None when the dive computer recorded no stop data."""
+
+    time_to_surface: Optional[List[float]] = None
+
+    """Total time to surface in seconds at each timestamp, including any
+    required decompression stops and ascent time."""
+
 
 @dataclass
 class People:
