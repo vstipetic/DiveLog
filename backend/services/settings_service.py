@@ -20,6 +20,9 @@ OPENROUTER_MODELS: Dict[str, str] = {
     "Claude Haiku": "anthropic/claude-3.5-haiku",
 }
 
+# Which detected key to select when the user has not picked one.
+PREFERRED_DEFAULT_KEY = "OpenRouter"
+
 # Provider code -> (display label, default model shown in the sidebar).
 PROVIDER_INFO = {
     "gemini": ("Google Gemini", "gemini-1.5-flash"),
@@ -44,6 +47,20 @@ def get_provider_from_key_name(key_name: str) -> str:
     return "gemini"  # Default
 
 
+def default_key_name(api_keys: Dict[str, str]) -> Optional[str]:
+    """
+    Pick which detected key to use before the user chooses one.
+
+    OpenRouter wins when it is configured: a single key reaches models from
+    every provider, so it is the most useful starting point. Otherwise the
+    detection order from APIKeyDetector applies.
+    """
+    for key_name in api_keys:
+        if PREFERRED_DEFAULT_KEY.lower() in key_name.lower():
+            return key_name
+    return next(iter(api_keys), None)
+
+
 def apply_selection(key_name: Optional[str], openrouter_model_label: Optional[str]) -> None:
     """Apply the user's provider selection from the sidebar form."""
     api_keys = detect_api_keys()
@@ -51,7 +68,7 @@ def apply_selection(key_name: Optional[str], openrouter_model_label: Optional[st
         return
 
     if key_name not in api_keys:
-        key_name = next(iter(api_keys))
+        key_name = default_key_name(api_keys)
 
     state.selected_key_name = key_name
     provider = get_provider_from_key_name(key_name)
@@ -80,9 +97,8 @@ def ensure_selection() -> bool:
     if not api_keys:
         return False
 
-    # Default to the first detected key (same as Streamlit's selectbox).
     if state.selected_key_name not in api_keys:
-        apply_selection(next(iter(api_keys)), state.openrouter_model_label)
+        apply_selection(default_key_name(api_keys), state.openrouter_model_label)
     return True
 
 
