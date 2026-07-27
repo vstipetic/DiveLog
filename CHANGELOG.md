@@ -25,6 +25,88 @@ All notable changes to DiveLog are documented in this file.
   all other interactions are classic form posts rendered server-side.
 - Dependencies: `streamlit` removed, `flask` added.
 
+**Bulk and Garmin imports run in the background**
+- Long imports no longer block the request. They run on a worker thread and
+  the page shows a live progress bar, the file being processed, and a
+  per-file status row (depth/duration/location on success, the error on
+  failure) — restoring the progress feedback the Streamlit UI had, and adding
+  a per-file result list that persists after the run finishes.
+- Progress is polled from `GET /import/progress`; the page reloads itself into
+  the results panel when the run completes. One import runs at a time.
+
+### Fixed
+
+- The agent is no longer rebuilt on every request. `get_agent()` compared a
+  normalised `Path` against a raw string, which never matched on Windows, so
+  each page load and each chat message constructed a fresh `StatisticsAgent` —
+  re-reading every dive pickle and, worse, silently discarding the
+  conversation history so follow-up questions lost all context.
+- The Garmin date range no longer resets to the last-90-days default on every
+  render. The selected range is kept in server state and echoed back into the
+  form, so it survives the post/redirect after "Fetch dives".
+- **The dive buddy is read from Garmin's buddy field again.** The optional LLM
+  enrichment pass merged the buddy field and the note's `grupa:` roster into one
+  list and took whichever name came first as the buddy, so a group member
+  routinely displaced the real buddy, and dives with no buddy at all (the ones
+  the user led) had one invented from the roster. On the reference log this was
+  wrong for 17 of 78 dives. The buddy now comes from Garmin Connect's buddy
+  field and nothing else — empty field, empty buddy — and the enrichment pass
+  can only widen the group, never shrink it or name a buddy. `parse_people()`
+  keeps `buddy` and `group` as separate fields but guarantees a designated buddy
+  is also in the group, so a person search never has to consult both.
+- `repair_dive_buddies.py` fixes the buddy on dives already on disk, re-reading
+  the field from Garmin Connect and rewriting nothing else. Dry-run by default;
+  pass `--apply` to write (backs each pickle up to `.pickle.bak`).
+- **Dive times are stored in the dive site's local time.** Every timestamp in a
+  `.fit` file is UTC, and the parser stored it verbatim, so a dive logged at
+  18:16 in Egypt sat in the pickle as 16:16. All 78 dives in the reference log
+  were affected (+1h to +3h). The offset now comes from the `.fit` file's own
+  `activity` message, which records the same instant as both `timestamp` (UTC)
+  and `local_timestamp` — no timezone database needed and already correct for
+  daylight saving. Verified against Garmin Connect's `startTimeLocal`: all 78
+  agree exactly. Times remain naive datetimes, so they stay comparable with
+  everything else in the app.
+- `DiveBasicInformation` gained three fields: `start_time_utc` / `end_time_utc`
+  hold the same instants standardised to UTC — local time is what the diver
+  logged and what every question about a dive means, but UTC is the only way to
+  order dives from different time zones on one absolute timeline — and
+  `utc_offset_hours` records how far ahead of UTC the site was. All three are
+  `None` on dives imported before this change.
+- `repair_dive_times.py` converts dives already on disk from UTC to local,
+  rewriting only the start/end times. Dry-run by default; `--apply` to write.
+- **Dives whose watch caught no GPS fix now get their coordinates from Garmin.**
+  The entry position was read only from the `.fit` file's `start_position`, which
+  the watch writes only when it had a lock at the instant the dive began — so
+  dives that started before the fix landed were stored with no position at all
+  (22 of 78 in the reference log). Garmin Connect holds a position for most of
+  them regardless, including ones the diver corrected by hand in the app after
+  the watch missed it, and `get_dive_metadata()` now returns it as
+  `entry_coordinates` for the parser to use. Where both sources have a value they
+  agree to within centimetres (the `.fit` reading is just rounded to six
+  decimals), so preferring Garmin never contradicts the watch; a plain folder
+  import has no metadata and still relies on the `.fit` alone.
+- `repair_dive_coordinates.py` backfills the position on dives already on disk,
+  rewriting only `location.entry`. Fills in missing coordinates by default;
+  `--overwrite` also corrects stored positions that disagree with Garmin by more
+  than `--tolerance` metres (default 1 m, so rounding never counts as a change).
+  Dry-run by default; `--apply` to write. On the reference log this recovers 16
+  of the 22 — the remaining 6 have no position in Garmin either.
+
+### Security
+
+- **CSRF protection** on every state-changing endpoint (`backend/security.py`).
+  The app has no login and binds to localhost, so cross-origin form posts could
+  previously drive it from any page open in the browser — changing the storage
+  folder, starting an import, or posting to the Garmin login route. Requests
+  that change state must now echo a per-session token (`_csrf_token` form field
+  or `X-CSRF-Token` header). Streamlit had equivalent XSRF protection built in.
+- **Chat markdown is sanitized** before rendering. `marked` passes raw HTML
+  through, and agent responses quote free text from dive pickles and Garmin
+  activity notes, so a crafted dive note could execute script in the page.
+  Output now goes through DOMPurify, and rendering fails closed to plain text
+  if the sanitizer is unavailable.
+- The session cookie is now `HttpOnly` and `SameSite=Lax`.
+
 ### Added
 
 **Import from Garmin Connect**

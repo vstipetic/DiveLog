@@ -11,6 +11,7 @@ from backend.services import (
     garmin_service,
     gear_service,
     import_service,
+    progress,
 )
 from backend.state import state
 
@@ -42,6 +43,11 @@ def import_page():
         state.import_mode = mode
     mode = state.import_mode
 
+    # A worker thread may have finished since the last render; move its results
+    # into the slot the results panel reads from before building the context.
+    progress.harvest_finished_job()
+    import_job = state.import_job
+
     storage_path = Path(state.storage_folder)
 
     context = {
@@ -50,6 +56,7 @@ def import_page():
         "storage_folder": state.storage_folder,
         "storage_folder_exists": storage_path.exists(),
         "dive_count": import_service.count_dives(),
+        "import_job": import_job.snapshot() if import_job else None,
     }
 
     if mode == "single":
@@ -72,6 +79,9 @@ def import_page():
         context["garmin_authenticated"] = authenticated
         context["garmin_mfa_pending"] = garmin_service.mfa_pending()
         context["garmin_credentials"] = detect_garmin_credentials()
+        start_date, end_date = garmin_service.current_date_range()
+        context["garmin_start_date"] = start_date
+        context["garmin_end_date"] = end_date
         if authenticated:
             context["garmin_dives"] = (
                 garmin_service.dive_display_rows()

@@ -28,6 +28,7 @@ from Utilities.Tools.FilterTool import (
     FilterDivesByDateTool,
     FilterDivesByDurationTool,
     FilterDivesByBuddyTool,
+    FilterDivesByPersonTool,
     FilterDivesByLocationTool,
     FilterDivesByStartTimeTool,
     FilterDivesByTemperatureTool,
@@ -39,6 +40,7 @@ from Utilities.Tools.FilterTool import (
 from Utilities.Tools.StatisticsTool import (
     CalculateStatisticTool,
     CalculateTimeBelowDepthTool,
+    CountDivesWithPersonTool,
 )
 from Utilities.Tools.SearchTool import (
     SearchDivesTool,
@@ -47,6 +49,15 @@ from Utilities.Tools.SearchTool import (
 )
 from Utilities.Tools.ToolState import ToolState
 from Utilities.Tools.ChartState import ChartState
+from Utilities.Tools.GeoState import GeoRegionState
+from Utilities.Tools.GeoTools import (
+    BuildRegionPolygonTool,
+    FilterDivesByRegionTool,
+)
+from Utilities.Tools.DecoTools import (
+    FilterDivesByDecoStatusTool,
+    FilterDivesByNDLTool,
+)
 from Utilities.Tools.ChartTools import (
     PlotHistogramTool,
     PlotBarChartTool,
@@ -68,13 +79,65 @@ When answering questions about dives:
 5. If you can't find exact information, explain what you can provide
 
 Available capabilities:
-- Filter dives by: depth, date, duration, buddy, location, start time (morning/afternoon),
-  water temperature, CNS oxygen toxicity load, gas type (air/nitrox/trimix),
-  and continuous time at specific depth
-- Calculate statistics: averages, totals, counts, breakdowns by time/location/buddy/gas
+- Filter dives by: depth, date, duration, buddy, any person present, location,
+  geographic region, decompression status, no-decompression limit reached,
+  start time (morning/afternoon), water temperature, CNS oxygen toxicity load,
+  gas type (air/nitrox/trimix), and continuous time at specific depth
+- Calculate statistics: averages, totals, counts, breakdowns by time/location/person/gas
 - Search for dives by text in various fields
 - Get detailed information about specific dives
 - List all dives with sorting options
+
+PEOPLE ON A DIVE:
+
+Each dive records a designated buddy, an optional divemaster, and a group of
+everyone else who was there. Someone is frequently in the group without being
+the designated buddy, so buddy-only tools undercount them.
+
+- "How many dives with X?" / "have I dived with X?" -> count_dives_with_person,
+  or filter_dives_by_person. Do NOT use filter_dives_by_buddy for these.
+- "Who do I dive with most?" -> calculate_statistic("most_common_dive_partner").
+- Use filter_dives_by_buddy and the *_buddy statistics only when the user
+  specifically asks about the designated buddy rather than the whole party.
+
+DECOMPRESSION QUESTIONS:
+
+The dive computer's own decompression data is stored on every dive: the
+remaining no-decompression limit, the ceiling, the required stop time and time
+to surface. NEVER estimate decompression status from dive tables, depth/time
+formulas or an algorithm of your own - the recorded answer is available and any
+estimate would contradict it. Never claim there is no NDL data without calling
+a tool first.
+
+- "How many dives did I enter deco on?" -> filter_dives_by_deco_status
+- "Dives with at least N minutes of deco" -> filter_dives_by_deco_status with
+  min_stop_minutes=N
+- "How many dives did I hit N minutes to deco?" / "how close have I come" ->
+  filter_dives_by_ndl with max_ndl_minutes=N
+- Overall breakdown -> calculate_statistic("dives_by_deco_status"), or
+  "max_deco_stop" / "min_ndl_reached"
+
+Shallow dives record no NDL, so the tools report those separately. Pass that on
+rather than counting them as clean profiles.
+
+GEOGRAPHIC QUESTIONS:
+
+Dives store GPS coordinates, so questions about where you dived are answered by
+building a region and filtering against it. Two routes:
+
+- Distance or a box ("within 5km of Vis", "near Karlobag", "between these
+  latitudes") -> build_region_polygon, then filter_dives_by_region with no
+  polygon argument. It computes the geometry exactly; never write circle
+  coordinates yourself.
+- A named area ("the Mediterranean", "Croatia", "Europe", "the Red Sea") ->
+  call filter_dives_by_region directly with your own approximate polygon in
+  GeoJSON [longitude, latitude] order. A dozen points tracing the outline is
+  enough. Say in your answer that the boundary is approximate.
+
+Use inside=false for "outside" questions ("dives outside Europe").
+
+Not every dive has a GPS fix. The tool reports how many were skipped for that
+reason -- pass that on rather than implying the count covers the whole log.
 - Create visualizations: histograms (depth/duration/temperature distributions),
   bar charts (dives by month/year/location/buddy), pie charts (proportional breakdowns),
   scatter plots (relationships between metrics like depth vs duration, with optional color coding by category)
@@ -248,17 +311,25 @@ class StatisticsAgent:
             FilterDivesByDateTool(dives=self.dives),
             FilterDivesByDurationTool(dives=self.dives),
             FilterDivesByBuddyTool(dives=self.dives),
+            FilterDivesByPersonTool(dives=self.dives),
             FilterDivesByLocationTool(dives=self.dives),
             FilterDivesByStartTimeTool(dives=self.dives),
             FilterDivesByTemperatureTool(dives=self.dives),
             FilterDivesByCNSLoadTool(dives=self.dives),
             FilterDivesByGasTypeTool(dives=self.dives),
             FilterDivesByDurationAtDepthTool(dives=self.dives),
+            # Geographic tools - build a region, then filter dives against it
+            BuildRegionPolygonTool(dives=self.dives),
+            FilterDivesByRegionTool(dives=self.dives),
+            # Decompression tools - the computer's own recorded NDL and stops
+            FilterDivesByDecoStatusTool(dives=self.dives),
+            FilterDivesByNDLTool(dives=self.dives),
             # Utility tool for creating labeled groups (for scatter plots)
             LabelFilteredDivesTool(),
             # Statistics tools - use all_dives as fallback, check ToolState first
             CalculateStatisticTool(all_dives=self.dives),
             CalculateTimeBelowDepthTool(all_dives=self.dives),
+            CountDivesWithPersonTool(all_dives=self.dives),
             # Search tools
             SearchDivesTool(dives=self.dives),
             GetDiveSummaryTool(dives=self.dives),
@@ -299,10 +370,11 @@ class StatisticsAgent:
             f"query='{query.replace(chr(10), ' ')[:120]}'"
         )
 
-        # Clear any previous filter/chart state from prior queries
+        # Clear any previous filter/chart/region state from prior queries
         ToolState.clear()
         ChartState.clear()
-        _log_event("Cleared ToolState and ChartState")
+        GeoRegionState.clear()
+        _log_event("Cleared ToolState, ChartState and GeoRegionState")
 
         try:
             # Build system prompt with dive count

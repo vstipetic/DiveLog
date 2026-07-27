@@ -44,6 +44,9 @@ class AppState:
         # Last scanned bulk-import folder and last bulk import results.
         self.bulk_folder: Optional[str] = None
         self.bulk_results: Optional[Dict[str, Any]] = None
+        # The bulk/Garmin import currently running on a worker thread, if any
+        # (backend/services/progress.py). Harvested into *_results when done.
+        self.import_job: Optional[Any] = None  # ImportJob
 
         # --- Garmin Connect --------------------------------------------------
         self.garmin_client: Optional[Any] = None
@@ -51,6 +54,10 @@ class AppState:
         self.garmin_mfa_state: Optional[Dict[str, Any]] = None
         self.garmin_dive_list: Optional[List[Dict[str, Any]]] = None
         self.garmin_results: Optional[Dict[str, Any]] = None
+        # Last date range used to fetch dives, so the form keeps the user's
+        # choice instead of snapping back to the default on every render.
+        self.garmin_start_date: Optional[str] = None
+        self.garmin_end_date: Optional[str] = None
 
         # Agent queries mutate shared tool state (ToolState / ChartState),
         # so query processing is serialized with this lock.

@@ -6,13 +6,15 @@ directly onto two HTTP endpoints instead of two Streamlit reruns.
 """
 
 import pickle
+from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from Utilities import GarminConnectClient
 from Utilities.Parsers.GarminDiveParser import parse_garmin_dive
 
 from backend.services.chat_service import refresh_agent
+from backend.services.progress import ImportJob
 from backend.state import state
 from backend.utils import format_duration
 
@@ -66,8 +68,30 @@ def logout() -> None:
     state.garmin_results = None
 
 
+def default_date_range() -> Tuple[str, str]:
+    """The range the fetch form starts on before the user picks one: last 90 days."""
+    today = date.today()
+    return (
+        (today - timedelta(days=90)).strftime("%Y-%m-%d"),
+        today.strftime("%Y-%m-%d"),
+    )
+
+
+def current_date_range() -> Tuple[str, str]:
+    """The range to render in the form: the user's last choice, else the default."""
+    default_start, default_end = default_date_range()
+    return (
+        state.garmin_start_date or default_start,
+        state.garmin_end_date or default_end,
+    )
+
+
 def fetch_dives(start_date: str, end_date: str) -> List[Dict[str, Any]]:
     """Fetch diving activities in the date range and keep them in state."""
+    # Remembered so the form redisplays the user's range instead of snapping
+    # back to the default after the post/redirect.
+    state.garmin_start_date = start_date
+    state.garmin_end_date = end_date
     dives = GarminConnectClient.list_dives(state.garmin_client, start_date, end_date)
     state.garmin_dive_list = dives
     return dives
@@ -121,15 +145,30 @@ def ai_parsing_available() -> bool:
     return _get_llm_provider() is not None
 
 
-def download_and_import(selected_ids: List[str], use_ai: bool) -> Dict[str, Any]:
+def dive_labels() -> Dict[str, str]:
+    """Map activity id -> display label for the dives currently fetched."""
+    return {row["activity_id"]: row["label"] for row in dive_display_rows()}
+
+
+def download_and_import(
+    selected_ids: List[str],
+    use_ai: bool,
+    job: Optional[ImportJob] = None,
+    labels: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
     """
     Download selected dives' .fit files and run them through the parser.
 
     When ``use_ai`` is set (and an LLM key is configured), each dive's
     metadata is refined with one LLM call (Utilities.DiveEnricher).
+
+    When ``job`` is given, each dive's start and outcome is reported to it so
+    the page can show live progress. ``labels`` supplies human-readable names
+    for the progress list (activity ids on their own are meaningless).
     """
     client = state.garmin_client
     provider = _get_llm_provider() if use_ai else None
+    labels = labels or {}
 
     storage_path = Path(state.storage_folder)
     fit_files_dest = storage_path / "FitFiles"
@@ -138,8 +177,13 @@ def download_and_import(selected_ids: List[str], use_ai: bool) -> Dict[str, Any]
     success_count = 0
     error_count = 0
     errors: List[Dict[str, str]] = []
+    items: List[Dict[str, str]] = []
 
     for activity_id in selected_ids:
+        name = labels.get(activity_id, f"Activity {activity_id}")
+        if job is not None:
+            job.start_item(name)
+
         try:
             # 1. Download the original .fit (named by activity id -> dedup anchor).
             fit_path = GarminConnectClient.download_fit(
@@ -168,16 +212,32 @@ def download_and_import(selected_ids: List[str], use_ai: bool) -> Dict[str, Any]
                 pickle.dump(dive, f)
 
             success_count += 1
+            detail = _describe_dive(dive, metadata)
+            items.append({"name": name, "status": "success", "detail": detail})
+            if job is not None:
+                job.record(name, True, detail)
         except Exception as e:
             error_count += 1
             errors.append({"activity_id": activity_id, "error": str(e)})
+            items.append({"name": name, "status": "error", "detail": str(e)})
+            if job is not None:
+                job.record(name, False, str(e))
 
     refresh_agent()
 
-    results = {
+    return {
         "success_count": success_count,
         "error_count": error_count,
         "errors": errors,
+        "items": items,
     }
-    state.garmin_results = results
-    return results
+
+
+def _describe_dive(dive, metadata: Dict[str, Any]) -> str:
+    """One-line summary of an imported dive, for the per-file status list."""
+    depth = max(dive.timeline.depths) if dive.timeline.depths else None
+    depth_str = f"{depth:.1f}m" if depth is not None else "?"
+    duration_str = format_duration(dive.basics.duration)
+    location = metadata.get("location_name") or dive.location.name
+    loc_str = f" @ {location}" if location else ""
+    return f"{depth_str}, {duration_str}{loc_str}"

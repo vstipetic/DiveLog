@@ -25,6 +25,8 @@ from Utilities.FilterFunctions import (
     dive_was_after_date,
     dive_was_before_date,
     dive_had_buddy,
+    dive_included_person,
+    dive_people_names,
     dive_was_at_location,
 )
 
@@ -440,6 +442,120 @@ class FilterDivesByBuddyTool(Tool):
                 f"{dive.duration_minutes:.0f}min with {dive.buddy or 'Unknown'}"
             )
 
+        if len(summaries) > 5:
+            lines.append(f"  ... and {len(summaries) - 5} more dives")
+
+        return "\n".join(lines)
+
+
+# =============================================================================
+# PERSON FILTER (buddy, divemaster or group member)
+# =============================================================================
+
+class FilterDivesByPersonInput(BaseModel):
+    """Input schema for filtering dives by any person present."""
+
+    person_name: str = Field(
+        description="Name of the person to search for (partial match, case-insensitive)"
+    )
+    role: str = Field(
+        "any",
+        description=(
+            "Which role to match: 'any' (default - buddy, divemaster or group "
+            "member), 'buddy' (the designated dive buddy only), 'group' (listed "
+            "in the dive group only), or 'divemaster'."
+        )
+    )
+
+
+class FilterDivesByPersonTool(Tool):
+    """Filter dives by anyone present, not only the designated buddy."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    name: str = "filter_dives_by_person"
+    description: str = (
+        "Filter dives by a person who was present, searching the dive buddy, the "
+        "divemaster AND the dive group. Use this instead of filter_dives_by_buddy "
+        "when the question is about diving *with* someone, because a person is "
+        "often in the group without being the designated buddy - "
+        "filter_dives_by_buddy would undercount them. "
+        "Set role='buddy' to restrict to dives where they were the buddy, or "
+        "role='group' for dives where they were in the group. "
+        "The filtered results are automatically available for subsequent statistics calculations."
+    )
+    args_schema: Type[BaseModel] = FilterDivesByPersonInput
+
+    dives: List[Dive] = Field(default_factory=list)
+
+    def run(self, person_name: str, role: str = "any") -> str:
+        """Filter dives by person and return formatted result."""
+        if not person_name or not person_name.strip():
+            return "Please provide a person_name to search for."
+
+        person_name = person_name.strip()
+        role = (role or "any").lower()
+
+        try:
+            filtered = [
+                d for d in self.dives
+                if dive_included_person(d, person_name, role)
+            ]
+        except ValueError as e:
+            return str(e)
+
+        role_desc = "any role" if role == "any" else f"role '{role}'"
+        ToolState.set_filtered_dives(
+            filtered, f"person '{person_name}' ({role_desc})"
+        )
+
+        if not filtered:
+            return (
+                f"No dives found with anyone matching '{person_name}' in {role_desc}."
+            )
+
+        # Which actual names matched, so a partial search like "Maja" is not
+        # silently conflating two different people.
+        needle = person_name.lower()
+        matched_names = sorted({
+            name
+            for d in filtered
+            for name in dive_people_names(d)
+            if needle in name.lower()
+        })
+
+        as_buddy = sum(
+            1 for d in filtered if dive_included_person(d, person_name, "buddy")
+        )
+
+        lines = [
+            f"Found {len(filtered)} dives with '{person_name}' ({role_desc}):",
+            f"- Matched people: {', '.join(matched_names)}",
+        ]
+        if role == "any":
+            lines.append(
+                f"- As designated buddy on {as_buddy}, "
+                f"in the group on the other {len(filtered) - as_buddy}"
+            )
+
+        summaries = [
+            DiveSummary.from_dive(d, f"dive_{i}")
+            for i, d in enumerate(filtered)
+        ]
+        depths = [s.max_depth_meters for s in summaries]
+        dates = [s.date for s in summaries]
+        lines.append(
+            f"- Date range: {min(dates).strftime('%Y-%m-%d')} to "
+            f"{max(dates).strftime('%Y-%m-%d')}"
+        )
+        lines.append(f"- Average max depth: {sum(depths) / len(depths):.1f}m")
+
+        lines.append("\nDive summaries:")
+        for dive in summaries[:5]:
+            lines.append(
+                f"  - {dive.date.strftime('%Y-%m-%d')}: {dive.max_depth_meters:.1f}m, "
+                f"{dive.duration_minutes:.0f}min at {dive.location}"
+            )
         if len(summaries) > 5:
             lines.append(f"  ... and {len(summaries) - 5} more dives")
 

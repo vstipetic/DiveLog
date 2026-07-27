@@ -141,12 +141,26 @@ def parse_user_profile(fit_file: FitFile) -> Dict[str, Any]:
 
 
 def parse_timeline(fit_file: FitFile) -> tuple[DiveTimeline, datetime]:
-    """Parse the timeline data from the fit file"""
+    """Parse the timeline data from the fit file.
+
+    Decompression series (``ndl_time``, ``next_stop_depth``, ``next_stop_time``,
+    ``time_to_surface``) are stored as ``None`` when the computer recorded
+    nothing at all for that dive, so "no data" stays distinguishable from
+    "recorded as zero" -- shallow dives legitimately report no NDL.
+
+    The returned start time is UTC, as .fit records it. Callers that want the
+    dive site's local time add :func:`parse_utc_offset`.
+    """
     depths: List[float] = []
     temperatures: List[int] = []
     n2_loads: List[int] = []
     cns_loads: List[int] = []
     timestamps: List[float] = []
+
+    ndl_times: List[Optional[float]] = []
+    next_stop_depths: List[Optional[float]] = []
+    next_stop_times: List[Optional[float]] = []
+    times_to_surface: List[Optional[float]] = []
 
     start_time: Optional[datetime] = None
 
@@ -158,8 +172,17 @@ def parse_timeline(fit_file: FitFile) -> tuple[DiveTimeline, datetime]:
 
         depths.append(values.get('depth', 0.0))  # Depth is already in meters
         temperatures.append(values.get('temperature', 0))
-        n2_loads.append(values.get('tissue_n2_load', 0))
+        # Garmin names this field 'n2_load'; 'tissue_n2_load' is checked as a
+        # fallback for other devices.
+        n2_loads.append(
+            values.get('n2_load', values.get('tissue_n2_load', 0)) or 0
+        )
         cns_loads.append(values.get('cns_load', 0))
+
+        ndl_times.append(values.get('ndl_time'))
+        next_stop_depths.append(values.get('next_stop_depth'))
+        next_stop_times.append(values.get('next_stop_time'))
+        times_to_surface.append(values.get('time_to_surface'))
 
         if start_time:
             elapsed = (values.get('timestamp') - start_time).total_seconds()
@@ -170,30 +193,124 @@ def parse_timeline(fit_file: FitFile) -> tuple[DiveTimeline, datetime]:
         temperature=temperatures,
         n2_load=n2_loads,
         cns_load=cns_loads,
-        timestamps=timestamps
+        timestamps=timestamps,
+        ndl_time=_series_or_none(ndl_times),
+        next_stop_depth=_series_or_none(next_stop_depths),
+        next_stop_time=_series_or_none(next_stop_times),
+        time_to_surface=_series_or_none(times_to_surface),
     )
 
     return timeline, start_time if start_time else datetime.now()
 
 
-def parse_basic_info(timeline: DiveTimeline, start_time: datetime) -> DiveBasicInformation:
-    """Create the basic dive information"""
+def _series_or_none(values: List[Optional[float]]) -> Optional[List[Optional[float]]]:
+    """Return the series, or None when the computer reported nothing for it."""
+    return values if any(v is not None for v in values) else None
+
+
+def parse_utc_offset(fit_file: FitFile) -> Optional[timedelta]:
+    """
+    Work out how far the dive site's local time is ahead of UTC.
+
+    Every timestamp in a .fit file is UTC -- the format defines it as seconds
+    since 1989-12-31 UTC -- so a dive logged at 18:16 in Egypt reads 16:16. The
+    ``activity`` message is the one place that carries both readings of the same
+    instant, and their difference is the offset that was in force at the time.
+    That beats deriving one from the GPS position: it needs no timezone database
+    and is already correct for daylight saving.
+
+    Returns:
+        The offset as a ``timedelta``, or ``None`` if the file does not carry
+        both timestamps (in which case times have to stay UTC).
+    """
+    for message in fit_file.get_messages('activity'):
+        utc = message.get_value('timestamp')
+        local = message.get_value('local_timestamp')
+        if utc is not None and local is not None:
+            return local - utc
+        break
+
+    return None
+
+
+def parse_basic_info(
+    timeline: DiveTimeline,
+    start_time: datetime,
+    utc_offset: Optional[timedelta] = None
+) -> DiveBasicInformation:
+    """
+    Create the basic dive information.
+
+    ``start_time`` arrives as UTC (straight off the .fit record). When the file
+    tells us the local offset, ``start_time``/``end_time`` are shifted into the
+    dive site's local time so they read the way the diver logged them -- the
+    time the watch was showing underwater. The UTC instants are kept alongside
+    in ``start_time_utc``/``end_time_utc``, which is what to use for anything
+    that has to order dives from different time zones on one timeline.
+    """
     duration = timeline.timestamps[-1] if timeline.timestamps else 0.0
+
+    start_time_utc = start_time
+    end_time_utc = start_time_utc + timedelta(seconds=duration)
+
+    if utc_offset is not None:
+        start_time = start_time_utc + utc_offset
+
     end_time = start_time + timedelta(seconds=duration)
+
     return DiveBasicInformation(
         duration=duration,
         start_time=start_time,
-        end_time=end_time
+        end_time=end_time,
+        utc_offset_hours=(
+            utc_offset.total_seconds() / 3600 if utc_offset is not None else None
+        ),
+        start_time_utc=start_time_utc,
+        end_time_utc=end_time_utc
     )
 
 
 def parse_people(metadata: Dict[str, Any]) -> People:
-    """Parse the people information from metadata"""
+    """
+    Parse the people information from metadata.
+
+    ``buddy`` and ``group`` are kept as two independent fields: the buddy is the
+    one person designated as such (empty when nobody was), while the group is
+    everyone on the dive. A designated buddy is always part of the group too, so
+    a person search never has to consult both fields.
+    """
+    buddy = (metadata.get('buddy') or '').strip()
+    group = set(metadata.get('group') or [])
+
+    if buddy:
+        group.add(buddy)
+
     return People(
-        buddy=metadata.get('buddy', ''),
+        buddy=buddy,
         divemaster=metadata.get('divemaster'),
-        group=set(metadata.get('group', []))
+        group=group
     )
+
+
+def parse_fit_entry_coordinates(fit_file: FitFile) -> Optional[Tuple[float, float]]:
+    """
+    Read the entry coordinates the watch itself recorded, if it caught a fix.
+
+    The watch only writes ``start_position_lat/long`` when it had a GPS lock at
+    the moment the dive started. Surface too briefly, start in a cove, or drop in
+    before the fix lands and the session carries no start position at all - which
+    is why this returns ``None`` for roughly a fifth of a real dive log.
+    """
+    for session in fit_file.get_messages('session'):
+        start_lat = session.get_value('start_position_lat')
+        start_lon = session.get_value('start_position_long')
+        if start_lat is not None and start_lon is not None:
+            return (
+                semicircles_to_degrees(start_lat),
+                semicircles_to_degrees(start_lon)
+            )
+        break
+    return None
 
 
 def parse_location(fit_file: FitFile, metadata: Dict[str, Any]) -> Location:
@@ -201,28 +318,26 @@ def parse_location(fit_file: FitFile, metadata: Dict[str, Any]) -> Location:
     Extract location information from the fit file and metadata.
 
     Note: Location NAME is NOT stored in .fit files - it must be provided via metadata.
-    Only GPS coordinates are extracted from the .fit file.
+
+    Entry coordinates are taken from ``metadata['entry_coordinates']`` when it is
+    set, falling back to the ``.fit`` file's own start position. Garmin Connect
+    wins because it is the only source that reflects a coordinate the diver typed
+    in by hand after the watch missed the fix, and where both exist they are the
+    same reading anyway (they agree to within centimetres - the ``.fit`` value is
+    just rounded to six decimals). A plain folder import has no metadata, so it
+    still relies on the ``.fit`` alone.
 
     Args:
         fit_file: FitFile object containing the dive data
-        metadata: Dictionary containing location information (name, description)
+        metadata: Dictionary containing location information (name, description,
+            and optionally entry_coordinates)
 
     Returns:
         Location object with name, description, and entry coordinates if available
     """
-    entry_coords = None
     exit_coords = None
 
-    # Get entry coordinates from session data
-    for session in fit_file.get_messages('session'):
-        start_lat = session.get_value('start_position_lat')
-        start_lon = session.get_value('start_position_long')
-        if start_lat is not None and start_lon is not None:
-            entry_coords = (
-                semicircles_to_degrees(start_lat),
-                semicircles_to_degrees(start_lon)
-            )
-        break
+    entry_coords = metadata.get('entry_coordinates') or parse_fit_entry_coordinates(fit_file)
 
     return Location(
         name=metadata.get('location_name', ''),
@@ -311,9 +426,10 @@ def parse_garmin_dive(file_path: str, metadata: Optional[Dict[str, Any]] = None)
                  f"avg_hr={session_data.get('avg_heart_rate')}bpm")
     logger.debug(f"  User Profile: weight={user_profile.get('weight')}kg")
 
-    # Parse core timeline and basic info
+    # Parse core timeline and basic info. parse_timeline returns the raw UTC
+    # anchor; parse_basic_info shifts it into the dive site's local time.
     timeline, start_time = parse_timeline(fit_file)
-    basic_info = parse_basic_info(timeline, start_time)
+    basic_info = parse_basic_info(timeline, start_time, parse_utc_offset(fit_file))
     people = parse_people(metadata)
     location = parse_location(fit_file, metadata)
 
@@ -391,17 +507,16 @@ def get_fit_file_metadata(file_path: str) -> Dict[str, Any]:
     user_profile = parse_user_profile(fit_file)
     timeline, start_time = parse_timeline(fit_file)
 
-    # Extract entry coordinates
-    entry_coords = None
-    for session in fit_file.get_messages('session'):
-        start_lat = session.get_value('start_position_lat')
-        start_lon = session.get_value('start_position_long')
-        if start_lat is not None and start_lon is not None:
-            entry_coords = (
-                semicircles_to_degrees(start_lat),
-                semicircles_to_degrees(start_lon)
-            )
-        break
+    # Show the same local time the import will store, not the raw UTC anchor.
+    utc_offset = parse_utc_offset(fit_file)
+    start_time_utc = start_time
+    if utc_offset is not None:
+        start_time = start_time + utc_offset
+
+    # Extract entry coordinates. This previews the .fit file on its own, so it
+    # shows only what the watch recorded - a Garmin import may still supply
+    # coordinates for a dive that previews without them.
+    entry_coords = parse_fit_entry_coordinates(fit_file)
 
     # Extract gas type
     gas_type = 'air'
@@ -419,6 +534,10 @@ def get_fit_file_metadata(file_path: str) -> Dict[str, Any]:
             'entry_coordinates': entry_coords,
             'dive_number': dive_summary.get('dive_number'),
             'start_time': start_time,
+            'start_time_utc': start_time_utc,
+            'utc_offset_hours': (
+                utc_offset.total_seconds() / 3600 if utc_offset is not None else None
+            ),
             'duration': timeline.timestamps[-1] if timeline.timestamps else 0,
             'max_depth': max(timeline.depths) if timeline.depths else dive_summary.get('max_depth', 0),
             'avg_depth': dive_summary.get('avg_depth'),

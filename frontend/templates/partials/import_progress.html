@@ -1,0 +1,29 @@
+{# Live progress for the running import. Rendered once server-side, then kept
+   up to date by frontend/static/js/import.js polling /import/progress. #}
+<section class="panel" id="import-progress"
+         data-progress-url="{{ url_for('imports.import_progress') }}">
+  <h3>{% if import_job.kind == 'garmin' %}Downloading from Garmin{% else %}Importing .fit files{% endif %}</h3>
+
+  <div class="progress-row">
+    <progress id="progress-bar" max="{{ import_job.total }}" value="{{ import_job.done }}"></progress>
+    <span id="progress-count" class="progress-count">{{ import_job.done }} / {{ import_job.total }}</span>
+  </div>
+
+  <p class="caption" id="progress-current">
+    {% if import_job.current %}Processing: {{ import_job.current }}{% else %}Starting...{% endif %}
+  </p>
+
+  <ol class="status-list" id="progress-items">
+    {% for item in import_job['items'] %}
+      <li class="status-row status-{{ item.status }}">
+        <span class="status-name">{{ item.name }}</span>
+        <span class="status-detail">{{ item.detail }}</span>
+      </li>
+    {% endfor %}
+  </ol>
+
+  <p class="caption">
+    You can leave this page open; the import continues on the server and this
+    panel refreshes when it finishes.
+  </p>
+</section>

@@ -26,6 +26,29 @@ class DiveTimeline:
 
     """List containing the number of seconds that have passed since start of the dive"""
 
+    ndl_time: Optional[List[Optional[float]]] = None
+
+    """Remaining no-decompression limit in seconds at each timestamp. Reaches 0
+    when a decompression obligation is incurred. None when the dive computer
+    recorded no NDL data at all (shallow dives), and an individual entry may be
+    None for samples where it was not reported."""
+
+    next_stop_depth: Optional[List[float]] = None
+
+    """Decompression ceiling in meters at each timestamp: the shallowest depth
+    that may be ascended to. 0 means no ceiling (no decompression obligation).
+    None when the dive computer recorded no ceiling data."""
+
+    next_stop_time: Optional[List[float]] = None
+
+    """Required time in seconds at the current decompression stop. 0 when there
+    is no obligation. None when the dive computer recorded no stop data."""
+
+    time_to_surface: Optional[List[float]] = None
+
+    """Total time to surface in seconds at each timestamp, including any
+    required decompression stops and ascent time."""
+
 
 @dataclass
 class People:
@@ -50,11 +73,32 @@ class DiveBasicInformation:
 
     start_time: datetime
 
-    """Time and date of the start of the dive"""
+    """Time and date of the start of the dive, in the LOCAL time of the dive
+    site: the wall-clock time the diver would say they entered the water. Naive
+    (no tzinfo) so it stays comparable with every other datetime in the app; add
+    utc_offset_hours to recover UTC."""
 
     end_time: datetime
 
-    """Time and date of the end of the dive"""
+    """Time and date of the end of the dive, local like start_time"""
+
+    utc_offset_hours: Optional[float] = None
+
+    """Hours the local time is ahead of UTC (e.g. 2.0 for Croatia in summer,
+    3.0 for Egypt in summer). None on dives imported before local time was
+    recorded, whose times are still stored as UTC."""
+
+    start_time_utc: Optional[datetime] = None
+
+    """The same instant as start_time, standardised to UTC. Local time is what
+    the diver logged and what every question about the dive means, but UTC is
+    the only way to order dives from different time zones on one absolute
+    timeline. Naive, like start_time. None on dives imported before this was
+    recorded."""
+
+    end_time_utc: Optional[datetime] = None
+
+    """The same instant as end_time, standardised to UTC."""
 
 
 @dataclass

@@ -16,6 +16,7 @@ from Utilities.AddDive import add_dive
 from Utilities.Parsers.GarminDiveParser import parse_garmin_dive, get_fit_file_metadata
 
 from backend.services.chat_service import refresh_agent
+from backend.services.progress import ImportJob
 from backend.state import state
 
 
@@ -187,12 +188,22 @@ def scan_bulk_folder(folder: str) -> Dict[str, Any]:
     }
 
 
-def run_bulk_import(folder: str, copy_fit_files: bool) -> Dict[str, Any]:
+def count_fit_files(folder: str) -> int:
+    """Number of .fit files in ``folder`` (used to size the progress bar)."""
+    return len(list(Path(folder).glob("*.fit")))
+
+
+def run_bulk_import(
+    folder: str, copy_fit_files: bool, job: Optional[ImportJob] = None
+) -> Dict[str, Any]:
     """
     Import every .fit file from ``folder`` into the storage folder.
 
+    When ``job`` is given, each file's start and outcome is reported to it so
+    the page can show live progress.
+
     Returns a results dict: success/error counts, GPS extraction count, and
-    per-file errors.
+    the per-file outcome list.
     """
     folder_path = Path(folder)
     fit_files = sorted(folder_path.glob("*.fit"))
@@ -203,9 +214,13 @@ def run_bulk_import(folder: str, copy_fit_files: bool) -> Dict[str, Any]:
     success_count = 0
     error_count = 0
     errors: List[Dict[str, str]] = []
+    items: List[Dict[str, str]] = []
     gps_extracted = 0
 
     for fit_file in fit_files:
+        if job is not None:
+            job.start_item(fit_file.name)
+
         try:
             preview = get_fit_file_metadata(str(fit_file))
             auto_data = preview["auto_extracted"]
@@ -224,9 +239,20 @@ def run_bulk_import(folder: str, copy_fit_files: bool) -> Dict[str, Any]:
                 shutil.copy2(fit_file, fit_files_dest / fit_file.name)
 
             success_count += 1
+            detail = _describe_dive(dive, auto_data)
+            items.append(
+                {"name": fit_file.name, "status": "success", "detail": detail}
+            )
+            if job is not None:
+                job.record(fit_file.name, True, detail)
         except Exception as e:
             error_count += 1
             errors.append({"filename": fit_file.name, "error": str(e)})
+            items.append(
+                {"name": fit_file.name, "status": "error", "detail": str(e)}
+            )
+            if job is not None:
+                job.record(fit_file.name, False, str(e))
 
     refresh_agent()
 
@@ -235,4 +261,15 @@ def run_bulk_import(folder: str, copy_fit_files: bool) -> Dict[str, Any]:
         "error_count": error_count,
         "gps_extracted": gps_extracted,
         "errors": errors,
+        "items": items,
     }
+
+
+def _describe_dive(dive, auto_data: Dict[str, Any]) -> str:
+    """One-line summary of an imported dive, for the per-file status list."""
+    depth = max(dive.timeline.depths) if dive.timeline.depths else None
+    depth_str = f"{depth:.1f}m" if depth is not None else "?"
+    duration_str = f"{dive.basics.duration / 60:.0f}min"
+    gas = auto_data.get("gas_type") or "air"
+    gps = " · GPS" if auto_data.get("entry_coordinates") else ""
+    return f"{depth_str}, {duration_str}, {gas}{gps}"

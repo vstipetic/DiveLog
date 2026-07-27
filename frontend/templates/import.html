@@ -7,6 +7,7 @@
   <section class="panel">
     <h3>Storage Settings</h3>
     <form method="post" action="{{ url_for('imports.set_storage_folder') }}" class="inline-form">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
       <label for="storage_folder">Storage Folder</label>
       <input type="text" id="storage_folder" name="storage_folder" value="{{ storage_folder }}"
              title="Path to the folder where dive files will be stored">
@@ -29,6 +30,10 @@
     </nav>
   </section>
 
+  {% if import_job %}
+    {% include "partials/import_progress.html" %}
+  {% endif %}
+
   {% if mode == 'single' %}
     {% include "partials/import_single.html" %}
   {% elif mode == 'bulk' %}
@@ -42,6 +47,7 @@
     <h3>Refresh Dives</h3>
     <div class="inline-form">
       <form method="post" action="{{ url_for('imports.reload_all_dives') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-primary">Reload All Dives</button>
       </form>
       {% if dive_count is not none %}
@@ -52,4 +58,8 @@
       {% endif %}
     </div>
   </section>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/import.js') }}"></script>
 {% endblock %}

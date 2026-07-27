@@ -15,6 +15,7 @@ from pathlib import Path
 
 from flask import Flask
 
+from backend.security import init_csrf
 from backend.utils import format_duration, format_surface_interval
 
 # Repository root (the folder containing app.py, backend/ and frontend/).
@@ -30,12 +31,20 @@ def create_app() -> Flask:
         static_folder=str(FRONTEND_DIR / "static"),
     )
 
-    # Only used for flash messages / session cookie signing. DiveLog is a
-    # local, single-user app, so an ephemeral key is fine unless overridden.
+    # Signs the session cookie, which carries flash messages and the CSRF
+    # token. DiveLog is a local, single-user app, so an ephemeral key is fine
+    # unless overridden; restarting the server just invalidates open sessions.
     app.secret_key = os.environ.get("DIVELOG_SECRET_KEY") or secrets.token_hex(32)
 
     # .fit files are small; 64 MB gives generous headroom for uploads.
     app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
+
+    # Keep the session cookie off cross-site requests and out of reach of
+    # scripts; the CSRF token lives in it.
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+
+    init_csrf(app)
 
     # Jinja filters shared by templates.
     app.jinja_env.filters["duration"] = format_duration

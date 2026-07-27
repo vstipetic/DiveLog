@@ -24,6 +24,7 @@
   </div>
 
   <form method="post" action="{{ url_for('imports.scan_bulk') }}" class="inline-form">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <label for="fit_folder">Folder containing .fit files</label>
     <input type="text" id="fit_folder" name="fit_folder" value="{{ bulk_folder }}"
            title="Enter the path to a folder containing .fit files to import">
@@ -50,18 +51,26 @@
       {% endif %}
     </details>
 
-    <form method="post" action="{{ url_for('imports.run_bulk') }}">
-      <label class="checkbox-label">
-        <input type="checkbox" name="copy_fit_files" checked>
-        Copy .fit files to storage
-        <span class="caption">(keep a copy of original .fit files alongside the pickle files)</span>
-      </label>
-      <button type="submit" class="btn btn-primary btn-block">Import All Files</button>
-    </form>
+    {% if not import_job %}
+      <form method="post" action="{{ url_for('imports.run_bulk') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <label class="checkbox-label">
+          <input type="checkbox" name="copy_fit_files" checked>
+          Copy .fit files to storage
+          <span class="caption">(keep a copy of original .fit files alongside the pickle files)</span>
+        </label>
+        <button type="submit" class="btn btn-primary btn-block">Import All Files</button>
+      </form>
+    {% endif %}
   {% endif %}
 
   {% if bulk_results %}
     <hr>
+    {% if bulk_results.fatal_error %}
+      <div class="alert alert-error">
+        The import stopped unexpectedly: {{ bulk_results.fatal_error }}
+      </div>
+    {% endif %}
     <div class="metric-row">
       <div class="metric">
         <div class="metric-label">Successful Imports</div>
@@ -79,12 +88,17 @@
       <div class="metric-value">{{ bulk_results.gps_extracted }}/{{ bulk_results.success_count }}</div>
     </div>
 
-    {% if bulk_results.errors %}
-      <details class="panel" open>
-        <summary>Error Details</summary>
-        {% for err in bulk_results.errors %}
-          <div class="alert alert-error"><strong>{{ err.filename }}</strong>: {{ err.error }}</div>
-        {% endfor %}
+    {% if bulk_results['items'] %}
+      <details class="panel" {% if bulk_results.error_count %}open{% endif %}>
+        <summary>Per-File Results ({{ bulk_results['items'] | length }})</summary>
+        <ol class="status-list status-list-tall">
+          {% for item in bulk_results['items'] %}
+            <li class="status-row status-{{ item.status }}">
+              <span class="status-name">{{ item.name }}</span>
+              <span class="status-detail">{{ item.detail }}</span>
+            </li>
+          {% endfor %}
+        </ol>
       </details>
     {% endif %}
   {% endif %}

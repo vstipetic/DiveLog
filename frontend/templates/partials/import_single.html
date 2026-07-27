@@ -2,6 +2,7 @@
   <h3>Single Dive Import</h3>
 
   <form method="post" action="{{ url_for('imports.upload_single') }}" enctype="multipart/form-data" class="inline-form">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <label for="fit_file">Upload .fit file</label>
     <input type="file" id="fit_file" name="fit_file" accept=".fit">
     <button type="submit" class="btn">Load File</button>
@@ -67,6 +68,7 @@
 
     <h4>Dive Metadata</h4>
     <form method="post" action="{{ url_for('imports.confirm_single') }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="token" value="{{ pending_upload.token }}">
 
       <details class="panel" open>
@@ -168,6 +170,7 @@
     </form>
 
     <form method="post" action="{{ url_for('imports.cancel_single') }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn btn-block">Cancel Upload</button>
     </form>
   {% endif %}

@@ -14,7 +14,9 @@ The application follows a modular architecture with clear separation of concerns
    - Flask application factory (`backend/__init__.py`)
    - `backend/state.py` - Server-side session state (agent instance, chat transcript, Garmin client)
    - `backend/services/` - Application logic wrapping `Utilities/` (chat/agent lifecycle, imports, Garmin, gear, settings)
-   - `backend/routes/` - HTML routes (AI Chat, Import Dives, Add Gear) plus a JSON chat API (`POST /api/chat`)
+   - `backend/services/progress.py` - Background `ImportJob` tracker; bulk/Garmin imports run on a worker thread and report per-file progress
+   - `backend/security.py` - CSRF protection for every state-changing request
+   - `backend/routes/` - HTML routes (AI Chat, Import Dives, Add Gear) plus a JSON chat API (`POST /api/chat`) and a progress endpoint (`GET /import/progress`)
    - `DiveFilterer.py` - Filter utility functions (root directory)
 
 1b. **Frontend Layer** (`frontend/`)
@@ -81,6 +83,7 @@ The application follows a modular architecture with clear separation of concerns
 - Optional `GARMIN_EMAIL` / `GARMIN_PASSWORD` in `.env` pre-fill the login form (detected via `detect_garmin_credentials()`)
 - Flow: `begin_login()`/`finish_mfa()` → `list_dives()` (filters activities client-side on `activityType.typeKey` containing "diving") → `download_fit()` (extracts the `.fit` from Garmin's ORIGINAL zip) → existing `parse_garmin_dive()`
 - Dedup: `already_imported()` skips dives whose `activityId` pickle/`.fit` already exists in the storage folder
+- `get_dive_metadata()` also supplies `entry_coordinates`, so dives whose `.fit` has no start position still get a location (see ".fit File Auto-Extraction")
 - Empty fields: same as Bulk Import (no buddy/gear/pressures) — enrich later via Single Dive import
 - Use when: Pulling dives straight from Garmin without touching Garmin Express
 
@@ -89,10 +92,18 @@ The application follows a modular architecture with clear separation of concerns
 The parser (`GarminDiveParser.py`) extracts extensive data from Garmin .fit files:
 
 **Auto-Extracted (stored in Dive object):**
-- `Location.entry` - GPS coordinates from session data (start_position_lat/long)
+- `Location.entry` - GPS coordinates from session data (start_position_lat/long).
+  The watch only writes this when it had a fix at the instant the dive started, so
+  it is absent for a sizeable minority of dives. A Garmin import fills those in
+  from Garmin Connect's `summaryDTO.startLatitude/startLongitude`, which also
+  carries positions the diver corrected by hand in the app; when both sources have
+  a value they agree to within centimetres, and Garmin's wins
 - `Gasses.gas` - Gas type (air/nitrox/trimix) based on O2/He percentages from dive_gas message
 - `DiveTimeline` - All depth, temperature, N2/CNS load data from record messages
-- `DiveBasicInformation` - Duration, start/end times
+- `DiveBasicInformation` - Duration, start/end times. `.fit` timestamps are UTC, so
+  the parser shifts them into the dive site's local time using the offset the file's
+  `activity` message records (`local_timestamp` - `timestamp`), and keeps that offset
+  in `utc_offset_hours`
 
 **Auto-Extracted (available via `get_fit_file_metadata()` but not stored in Dive class):**
 - `dive_number` - Sequential dive number from dive_summary message
@@ -202,7 +213,7 @@ class Dive:
 **Nested Structures:**
 
 - `DiveTimeline`: Lists of depths (meters), temperatures (Celsius), N2 loads, CNS loads, and timestamps (seconds from start)
-- `DiveBasicInformation`: Duration (seconds), start_time, end_time (datetime objects)
+- `DiveBasicInformation`: Duration (seconds), start_time, end_time (naive datetimes in the dive site's **local** time — the time the watch was showing underwater), start_time_utc, end_time_utc (Optional[datetime], the same instants standardised to UTC, for ordering dives across time zones), utc_offset_hours (Optional[float], hours ahead of UTC). The three optional fields are `None` on dives imported before local time was recorded
 - `People`: buddy (str), divemaster (Optional[str]), group (Optional[Set[str]])
 - `Location`: name (str), entry (Optional[Tuple[float, float]]), exit (Optional[Tuple[float, float]]), description (Optional[str])
 - `Gasses`: gas (str: 'air'|'nitrox'|'trimix'), start_pressure (int), end_pressure (int)
@@ -333,8 +344,11 @@ Without this mechanism, statistics would incorrectly operate on ALL dives instea
 ### 🚧 Partially Implemented
 
 1. **Location Parsing**
-   - Entry coordinates extracted from .fit files
-   - Exit coordinates not implemented (always None)
+   - Entry coordinates extracted from .fit files, falling back to Garmin Connect
+     when the watch caught no fix at the start of the dive
+   - Exit coordinates not implemented (always None). Garmin Connect does expose
+     `summaryDTO.endLatitude/endLongitude` for roughly half of dives, so this is
+     now fillable the same way `entry` is
 
 ### ❌ Not Implemented
 
@@ -352,12 +366,13 @@ DiveLog/
 ├── backend/                      # Flask backend
 │   ├── __init__.py               # Application factory
 │   ├── state.py                  # Server-side session state
+│   ├── security.py               # CSRF token issuing + validation
 │   ├── utils.py                  # Formatting helpers (also Jinja filters)
-│   ├── services/                 # chat, imports, Garmin, gear, settings
-│   └── routes/                   # Page routes + JSON chat API
+│   ├── services/                 # chat, imports, Garmin, gear, settings, progress
+│   └── routes/                   # Page routes + JSON chat API + progress endpoint
 ├── frontend/                     # Jinja2 frontend
 │   ├── templates/                # base, chat, import (+ partials), gear
-│   └── static/                   # css/style.css, js/chat.js, js/gear.js
+│   └── static/                   # css/style.css, js/chat.js, js/gear.js, js/import.js
 ├── DiveFilterer.py               # Root-level filter utilities
 ├── explorer.ipynb                # Jupyter notebook (exploration/testing)
 ├── pyproject.toml                # uv/pip dependencies
@@ -398,7 +413,7 @@ DiveLog/
         ├── SearchTool.py          # 3 search tools (uses ConfigDict)
         ├── ChartTools.py          # 4 visualization tools (Altair charts)
         ├── ToolState.py           # Shared state for filter→statistics chaining
-        └── ChartState.py          # Shared state for chart→Streamlit rendering
+        └── ChartState.py          # Shared state for chart→UI rendering
 ```
 
 ## Query Examples
