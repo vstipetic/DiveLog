@@ -74,6 +74,23 @@ All notable changes to DiveLog are documented in this file.
   `None` on dives imported before this change.
 - `repair_dive_times.py` converts dives already on disk from UTC to local,
   rewriting only the start/end times. Dry-run by default; `--apply` to write.
+- **Dives whose watch caught no GPS fix now get their coordinates from Garmin.**
+  The entry position was read only from the `.fit` file's `start_position`, which
+  the watch writes only when it had a lock at the instant the dive began — so
+  dives that started before the fix landed were stored with no position at all
+  (22 of 78 in the reference log). Garmin Connect holds a position for most of
+  them regardless, including ones the diver corrected by hand in the app after
+  the watch missed it, and `get_dive_metadata()` now returns it as
+  `entry_coordinates` for the parser to use. Where both sources have a value they
+  agree to within centimetres (the `.fit` reading is just rounded to six
+  decimals), so preferring Garmin never contradicts the watch; a plain folder
+  import has no metadata and still relies on the `.fit` alone.
+- `repair_dive_coordinates.py` backfills the position on dives already on disk,
+  rewriting only `location.entry`. Fills in missing coordinates by default;
+  `--overwrite` also corrects stored positions that disagree with Garmin by more
+  than `--tolerance` metres (default 1 m, so rounding never counts as a change).
+  Dry-run by default; `--apply` to write. On the reference log this recovers 16
+  of the 22 — the remaining 6 have no position in Garmin either.
 
 ### Security
 

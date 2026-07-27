@@ -292,33 +292,52 @@ def parse_people(metadata: Dict[str, Any]) -> People:
     )
 
 
+def parse_fit_entry_coordinates(fit_file: FitFile) -> Optional[Tuple[float, float]]:
+    """
+    Read the entry coordinates the watch itself recorded, if it caught a fix.
+
+    The watch only writes ``start_position_lat/long`` when it had a GPS lock at
+    the moment the dive started. Surface too briefly, start in a cove, or drop in
+    before the fix lands and the session carries no start position at all - which
+    is why this returns ``None`` for roughly a fifth of a real dive log.
+    """
+    for session in fit_file.get_messages('session'):
+        start_lat = session.get_value('start_position_lat')
+        start_lon = session.get_value('start_position_long')
+        if start_lat is not None and start_lon is not None:
+            return (
+                semicircles_to_degrees(start_lat),
+                semicircles_to_degrees(start_lon)
+            )
+        break
+    return None
+
+
 def parse_location(fit_file: FitFile, metadata: Dict[str, Any]) -> Location:
     """
     Extract location information from the fit file and metadata.
 
     Note: Location NAME is NOT stored in .fit files - it must be provided via metadata.
-    Only GPS coordinates are extracted from the .fit file.
+
+    Entry coordinates are taken from ``metadata['entry_coordinates']`` when it is
+    set, falling back to the ``.fit`` file's own start position. Garmin Connect
+    wins because it is the only source that reflects a coordinate the diver typed
+    in by hand after the watch missed the fix, and where both exist they are the
+    same reading anyway (they agree to within centimetres - the ``.fit`` value is
+    just rounded to six decimals). A plain folder import has no metadata, so it
+    still relies on the ``.fit`` alone.
 
     Args:
         fit_file: FitFile object containing the dive data
-        metadata: Dictionary containing location information (name, description)
+        metadata: Dictionary containing location information (name, description,
+            and optionally entry_coordinates)
 
     Returns:
         Location object with name, description, and entry coordinates if available
     """
-    entry_coords = None
     exit_coords = None
 
-    # Get entry coordinates from session data
-    for session in fit_file.get_messages('session'):
-        start_lat = session.get_value('start_position_lat')
-        start_lon = session.get_value('start_position_long')
-        if start_lat is not None and start_lon is not None:
-            entry_coords = (
-                semicircles_to_degrees(start_lat),
-                semicircles_to_degrees(start_lon)
-            )
-        break
+    entry_coords = metadata.get('entry_coordinates') or parse_fit_entry_coordinates(fit_file)
 
     return Location(
         name=metadata.get('location_name', ''),
@@ -494,17 +513,10 @@ def get_fit_file_metadata(file_path: str) -> Dict[str, Any]:
     if utc_offset is not None:
         start_time = start_time + utc_offset
 
-    # Extract entry coordinates
-    entry_coords = None
-    for session in fit_file.get_messages('session'):
-        start_lat = session.get_value('start_position_lat')
-        start_lon = session.get_value('start_position_long')
-        if start_lat is not None and start_lon is not None:
-            entry_coords = (
-                semicircles_to_degrees(start_lat),
-                semicircles_to_degrees(start_lon)
-            )
-        break
+    # Extract entry coordinates. This previews the .fit file on its own, so it
+    # shows only what the watch recorded - a Garmin import may still supply
+    # coordinates for a dive that previews without them.
+    entry_coords = parse_fit_entry_coordinates(fit_file)
 
     # Extract gas type
     gas_type = 'air'

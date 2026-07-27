@@ -197,6 +197,19 @@ def _as_int(value: Any) -> int:
     return int(value) if isinstance(value, (int, float)) else 0
 
 
+def _coordinate_pair(lat: Any, lon: Any) -> Optional[Tuple[float, float]]:
+    """
+    Build a (lat, lon) pair, or None unless both halves are real numbers.
+
+    Garmin returns full float precision; the .fit parser rounds to six decimals
+    (~10 cm), so rounding here keeps both sources directly comparable and stops
+    a re-import from looking like a change when nothing moved.
+    """
+    if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+        return (round(float(lat), 6), round(float(lon), 6))
+    return None
+
+
 # Matches a "grupa: name, name, ..." line (Croatian for "group") in a dive note,
 # case-insensitive, anywhere in the (possibly multi-line) description.
 _GROUP_LINE_RE = re.compile(r"^[ \t]*grupa[ \t]*:[ \t]*(.*)$", re.IGNORECASE | re.MULTILINE)
@@ -284,7 +297,10 @@ def get_dive_metadata(client: Garmin, activity_id: str) -> Dict[str, Any]:
     ``metadata`` argument, plus a few display-only fields.
 
     Populated in practice: ``dive_number``, ``activity_name``, ``location_name``
-    (inferred from the dive name, see :func:`infer_location_name`), ``buddy``
+    (inferred from the dive name, see :func:`infer_location_name`),
+    ``entry_coordinates`` (a ``(lat, lon)`` pair - present for dives whose
+    ``.fit`` has no start position, including ones the diver positioned by hand),
+    ``buddy``
     (Garmin's buddy field only - empty when the user designated nobody) and
     ``group`` (the buddy field plus any ``"grupa: ..."`` note line, see
     :func:`parse_group_from_note`), ``weights`` (weight belt, kg),
@@ -308,6 +324,7 @@ def get_dive_metadata(client: Garmin, activity_id: str) -> Dict[str, Any]:
     act = client.get_activity(activity_id)
     dive_info = act.get("diveInfo") or {}
     metadata_dto = act.get("metadataDTO") or {}
+    summary_dto = act.get("summaryDTO") or {}
     gases = dive_info.get("diveGases") or []
     first_gas = gases[0] if gases else {}
     activity_name = act.get("activityName")
@@ -331,9 +348,20 @@ def get_dive_metadata(client: Garmin, activity_id: str) -> Dict[str, Any]:
     # the group too, so a person search never has to consult both.
     group = set(buddy_names) | set(note_group)
 
+    # ENTRY COORDINATES. The .fit file only carries a start position when the
+    # watch had a GPS lock at the instant the dive began, so a dive that started
+    # before the fix landed has none. Garmin Connect keeps a position for those
+    # dives anyway - either derived on upload or typed in by the diver afterwards
+    # - which makes it the better source. Where the .fit does have a position the
+    # two agree, so preferring this never contradicts the watch.
+    entry_coordinates = _coordinate_pair(
+        summary_dto.get("startLatitude"), summary_dto.get("startLongitude")
+    )
+
     return {
         # --- accepted by parse_garmin_dive(metadata=...) ---
         "location_name": infer_location_name(activity_name, act.get("locationName")),
+        "entry_coordinates": entry_coordinates,
         "location_description": remaining_note,
         "buddy": primary_buddy,
         "group": group,

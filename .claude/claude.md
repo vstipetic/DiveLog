@@ -83,6 +83,7 @@ The application follows a modular architecture with clear separation of concerns
 - Optional `GARMIN_EMAIL` / `GARMIN_PASSWORD` in `.env` pre-fill the login form (detected via `detect_garmin_credentials()`)
 - Flow: `begin_login()`/`finish_mfa()` → `list_dives()` (filters activities client-side on `activityType.typeKey` containing "diving") → `download_fit()` (extracts the `.fit` from Garmin's ORIGINAL zip) → existing `parse_garmin_dive()`
 - Dedup: `already_imported()` skips dives whose `activityId` pickle/`.fit` already exists in the storage folder
+- `get_dive_metadata()` also supplies `entry_coordinates`, so dives whose `.fit` has no start position still get a location (see ".fit File Auto-Extraction")
 - Empty fields: same as Bulk Import (no buddy/gear/pressures) — enrich later via Single Dive import
 - Use when: Pulling dives straight from Garmin without touching Garmin Express
 
@@ -91,7 +92,12 @@ The application follows a modular architecture with clear separation of concerns
 The parser (`GarminDiveParser.py`) extracts extensive data from Garmin .fit files:
 
 **Auto-Extracted (stored in Dive object):**
-- `Location.entry` - GPS coordinates from session data (start_position_lat/long)
+- `Location.entry` - GPS coordinates from session data (start_position_lat/long).
+  The watch only writes this when it had a fix at the instant the dive started, so
+  it is absent for a sizeable minority of dives. A Garmin import fills those in
+  from Garmin Connect's `summaryDTO.startLatitude/startLongitude`, which also
+  carries positions the diver corrected by hand in the app; when both sources have
+  a value they agree to within centimetres, and Garmin's wins
 - `Gasses.gas` - Gas type (air/nitrox/trimix) based on O2/He percentages from dive_gas message
 - `DiveTimeline` - All depth, temperature, N2/CNS load data from record messages
 - `DiveBasicInformation` - Duration, start/end times. `.fit` timestamps are UTC, so
@@ -338,8 +344,11 @@ Without this mechanism, statistics would incorrectly operate on ALL dives instea
 ### 🚧 Partially Implemented
 
 1. **Location Parsing**
-   - Entry coordinates extracted from .fit files
-   - Exit coordinates not implemented (always None)
+   - Entry coordinates extracted from .fit files, falling back to Garmin Connect
+     when the watch caught no fix at the start of the dive
+   - Exit coordinates not implemented (always None). Garmin Connect does expose
+     `summaryDTO.endLatitude/endLongitude` for roughly half of dives, so this is
+     now fillable the same way `entry` is
 
 ### ❌ Not Implemented
 
