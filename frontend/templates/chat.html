@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block head %}
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+{% endblock %}
+
+{% block content %}
+  {% if agent_available and dive_count > 0 %}
+    <div class="alert alert-success">Loaded {{ dive_count }} dives from your log</div>
+
+    {% if quick_stats %}
+      <details class="panel" open>
+        <summary>📊 Quick Stats</summary>
+        <div class="metric-row">
+          <div class="metric">
+            <div class="metric-label">Total Dives</div>
+            <div class="metric-value">{{ quick_stats.total_dives }}</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Total Time</div>
+            <div class="metric-value">{{ "%.1f"|format(quick_stats.total_time_hours) }} hours</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Avg Depth</div>
+            <div class="metric-value">{{ "%.1f"|format(quick_stats.avg_depth) }}m</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Max Depth</div>
+            <div class="metric-value">{{ "%.1f"|format(quick_stats.max_depth) }}m</div>
+          </div>
+        </div>
+      </details>
+    {% endif %}
+  {% elif not agent_available %}
+    <div class="alert alert-error">
+      The AI agent is not available. Please configure an API key in the sidebar.
+    </div>
+  {% else %}
+    <div class="alert alert-warning">
+      No dives found. Add some dives using the Import Dives tab
+      or import .fit files to <code>Storage/Dives/</code>
+    </div>
+  {% endif %}
+
+  <details class="panel">
+    <summary>💡 Example Questions</summary>
+    <div class="example-grid">
+      {% for example in example_queries %}
+        <button type="button" class="btn example-query" data-query="{{ example }}">{{ example }}</button>
+      {% endfor %}
+    </div>
+  </details>
+
+  <h2>Ask about your dives</h2>
+
+  <div id="chat-messages" class="chat-messages">
+    {% for message in messages %}
+      <div class="chat-message {{ message.role }}">
+        <div class="chat-role">{{ 'You' if message.role == 'user' else 'Assistant' }}</div>
+        <div class="chat-content markdown-body" data-markdown>{{ message.content }}</div>
+        {% for chart in message.charts or [] %}
+          {% if chart.spec %}
+            <div class="chart-container">
+              {# Flask's tojson escapes quotes, so the single-quoted attribute is safe #}
+              <div class="chart" data-spec='{{ chart.spec | tojson }}'></div>
+            </div>
+          {% else %}
+            <div class="alert alert-info">Chart '{{ chart.title or 'Unknown' }}' has no data to display</div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <div id="chat-spinner" class="spinner hidden">
+    <div class="spinner-icon"></div>
+    <span>Analyzing your dives...</span>
+  </div>
+
+  <form id="chat-form" class="chat-input-row" autocomplete="off">
+    <input type="text" id="chat-input" placeholder="Ask about your dives..."
+           {% if not agent_available %}disabled{% endif %}>
+    <button type="submit" class="btn btn-primary" {% if not agent_available %}disabled{% endif %}>Send</button>
+  </form>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+{% endblock %}

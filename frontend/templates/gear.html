@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h2>Add New Gear</h2>
+
+  <div class="alert alert-info">Create new gear items that can be associated with your dives.</div>
+
+  <form method="post" action="{{ url_for('gear.add_gear') }}">
+    <section class="panel">
+      <label for="gear_type">Gear Type</label>
+      <select id="gear_type" name="gear_type" title="Select the type of gear to add">
+        {% for gear_type in gear_types %}
+          <option value="{{ gear_type }}">{{ gear_type }}</option>
+        {% endfor %}
+      </select>
+    </section>
+
+    <section class="panel">
+      <h3>Gear Details</h3>
+      <div class="form-grid">
+        <div>
+          <label for="name">Name</label>
+          <input type="text" id="name" name="name"
+                 title="Unique name for this gear item (e.g., 'My Cressi Mask')">
+        </div>
+        <div>
+          <label class="checkbox-label">
+            <input type="checkbox" name="is_rental">
+            Rental Gear
+            <span class="caption">(excluded from statistics)</span>
+          </label>
+        </div>
+      </div>
+      <label for="description">Description (optional)</label>
+      <textarea id="description" name="description" rows="3"
+                title="Optional description or notes about this gear"></textarea>
+    </section>
+
+    <section class="panel">
+      <h3>Type-Specific Details</h3>
+
+      <p class="caption" data-gear-section="Mask">Masks have no additional fields.</p>
+
+      <div class="form-grid" data-gear-section="Suit" hidden>
+        <div>
+          <label>Thickness (mm)</label>
+          <input type="number" name="thickness" min="1" max="10" value="5" data-thickness="Suit" disabled>
+        </div>
+        <div>
+          <label>Size</label>
+          <input type="number" name="size" min="1" max="60" value="50" data-size="Suit" disabled>
+        </div>
+      </div>
+
+      <div class="form-grid" data-gear-section="Gloves" hidden>
+        <div>
+          <label>Thickness (mm)</label>
+          <input type="number" name="thickness" min="1" max="10" value="3" data-thickness="Gloves" disabled>
+        </div>
+        <div>
+          <label>Size</label>
+          <select name="glove_size" data-size="Gloves" disabled>
+            {% for size in glove_sizes %}
+              <option value="{{ size }}" {% if size == 'M' %}selected{% endif %}>{{ size }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="form-grid" data-gear-section="Boots" hidden>
+        <div>
+          <label>Thickness (mm)</label>
+          <input type="number" name="thickness" min="1" max="10" value="5" data-thickness="Boots" disabled>
+        </div>
+        <div>
+          <label>Size</label>
+          <input type="number" name="size" min="20" max="50" value="42" data-size="Boots" disabled>
+        </div>
+      </div>
+    </section>
+
+    <button type="submit" class="btn btn-primary btn-block">Save Gear</button>
+  </form>
+
+  <hr>
+  <h3>Existing Gear</h3>
+  {% if total_gear == 0 %}
+    <div class="alert alert-info">
+      No gear found in Storage/Gear/. Create your first gear item above!
+    </div>
+  {% else %}
+    {% for gear_type_name, items in gear_items.items() %}
+      {% if items %}
+        <details class="panel">
+          <summary>{{ gear_type_name }} ({{ items | length }})</summary>
+          <ul>
+            {% for item_name in items.keys() %}
+              <li>{{ item_name }}</li>
+            {% endfor %}
+          </ul>
+        </details>
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/gear.js') }}"></script>
+{% endblock %}

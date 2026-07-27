@@ -4,6 +4,27 @@ All notable changes to DiveLog are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+**Frontend/backend separation (Flask + Jinja2)**
+- The Streamlit monolith (`streamlit_app.py`) is replaced by a separated
+  architecture: a Flask backend (`backend/`) and a Jinja2-rendered frontend
+  (`frontend/templates/` + `frontend/static/`).
+- Run with `uv run python app.py` and open `http://localhost:5000` (was
+  `uv run streamlit run streamlit_app.py` on port 8501).
+- The UI keeps the same three tabs (AI Chat, Import Dives, Add Gear), the same
+  sidebar (provider/model selection, reload dives, clear chat), and the same
+  import workflows (single dive with `.fit` preview, bulk folder import, and
+  Import from Garmin with MFA support).
+- The agent and its tool design are untouched: `StatisticsAgent`, all tools,
+  and the `ToolState`/`ChartState` chaining work exactly as before. Charts
+  still flow from the chart tools through `ChartState`; the backend now
+  serializes them to Vega-Lite JSON and the browser renders them with
+  vega-embed (same Altair charts as before).
+- Chat runs over a small JSON API (`POST /api/chat`) consumed by the frontend;
+  all other interactions are classic form posts rendered server-side.
+- Dependencies: `streamlit` removed, `flask` added.
+
 ### Added
 
 **Import from Garmin Connect**

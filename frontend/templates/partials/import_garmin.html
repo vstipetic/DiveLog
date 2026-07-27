@@ -1,0 +1,134 @@
+<section class="panel">
+  <h3>Import from Garmin Connect</h3>
+
+  <div class="manual-input">
+    <strong>ℹ️ Unofficial Garmin Connect API</strong><br>
+    This logs into your Garmin account using the same flow as the mobile app
+    (via the <code>garminconnect</code> library). It is not an official API and may
+    break if Garmin changes their login. Your login token is cached locally under
+    <code>Storage/.garmin_tokens/</code> so you only enter your password (and MFA
+    code) once. Downloaded dives get the same auto-extracted data as Bulk Import.
+  </div>
+
+  {% if not garmin_authenticated %}
+
+    {% if garmin_mfa_pending %}
+      <div class="alert alert-info">This account requires multi-factor authentication.</div>
+      <form method="post" action="{{ url_for('garmin.mfa') }}">
+        <label for="mfa_code">MFA code</label>
+        <input type="text" id="mfa_code" name="mfa_code"
+               title="Enter the one-time code from your email or authenticator app">
+        <button type="submit" class="btn btn-primary">Verify code</button>
+      </form>
+      <form method="post" action="{{ url_for('garmin.cancel_mfa') }}">
+        <button type="submit" class="btn">Cancel</button>
+      </form>
+    {% else %}
+      {% if garmin_credentials.get('email') or garmin_credentials.get('password') %}
+        <p class="caption">Credentials pre-filled from .env (GARMIN_EMAIL / GARMIN_PASSWORD).</p>
+      {% endif %}
+      <form method="post" action="{{ url_for('garmin.login') }}">
+        <label for="garmin_email">Garmin email</label>
+        <input type="email" id="garmin_email" name="email" value="{{ garmin_credentials.get('email', '') }}">
+        <label for="garmin_password">Garmin password</label>
+        <input type="password" id="garmin_password" name="password" value="{{ garmin_credentials.get('password', '') }}">
+        <button type="submit" class="btn btn-primary">Connect</button>
+      </form>
+    {% endif %}
+
+  {% else %}
+
+    <div class="inline-form">
+      <div class="alert alert-success grow">Connected to Garmin Connect.</div>
+      <form method="post" action="{{ url_for('garmin.logout') }}">
+        <button type="submit" class="btn">Log out</button>
+      </form>
+    </div>
+
+    <hr>
+    <h4>Find Dives</h4>
+    <form method="post" action="{{ url_for('garmin.fetch_dives') }}" class="inline-form">
+      <div>
+        <label for="start_date">From</label>
+        <input type="date" id="start_date" name="start_date">
+      </div>
+      <div>
+        <label for="end_date">To</label>
+        <input type="date" id="end_date" name="end_date">
+      </div>
+      <button type="submit" class="btn">Fetch dives</button>
+    </form>
+    <script>
+      // Default range: last 90 days (same as the previous UI).
+      (function () {
+        const fmt = (d) => d.toISOString().slice(0, 10);
+        const end = new Date();
+        const start = new Date(Date.now() - 90 * 24 * 3600 * 1000);
+        document.getElementById('start_date').value = fmt(start);
+        document.getElementById('end_date').value = fmt(end);
+      })();
+    </script>
+
+    {% if garmin_dives is none %}
+      <div class="alert alert-info">Choose a date range and click 'Fetch dives'.</div>
+    {% elif not garmin_dives %}
+      <div class="alert alert-warning">No diving activities found in that date range.</div>
+    {% else %}
+      <div class="alert alert-success">Found {{ garmin_dives | length }} diving activities.</div>
+      <hr>
+      <p class="caption">Select dives to download and import. Already-imported dives are pre-unchecked.</p>
+
+      <form method="post" action="{{ url_for('garmin.import_selected') }}">
+        <div class="dive-checklist">
+          {% for dive in garmin_dives %}
+            <label class="checkbox-label">
+              <input type="checkbox" name="dive_ids" value="{{ dive.activity_id }}"
+                     {% if not dive.imported %}checked{% endif %}>
+              {{ dive.label }}{% if dive.imported %}  ✓ imported{% endif %}
+            </label>
+          {% endfor %}
+        </div>
+
+        <hr>
+        {% if ai_parsing_available %}
+          <label class="checkbox-label">
+            <input type="checkbox" name="use_ai">
+            Use AI to parse dive site &amp; group from names/notes
+            <span class="caption">
+              (Runs one LLM call per dive to extract the dive site, the full buddy group,
+              and a cleaned note. Without this, deterministic rules are used —
+              still parses 'grupa:' lines.)
+            </span>
+          </label>
+        {% else %}
+          <p class="caption">Configure an LLM API key in the sidebar to enable AI note parsing.</p>
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary btn-block">Download &amp; Import Selected</button>
+      </form>
+    {% endif %}
+
+    {% if garmin_results %}
+      <hr>
+      <div class="metric-row">
+        <div class="metric">
+          <div class="metric-label">Successful Imports</div>
+          <div class="metric-value">{{ garmin_results.success_count }}</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Failed Imports</div>
+          <div class="metric-value">{{ garmin_results.error_count }}</div>
+        </div>
+      </div>
+      {% if garmin_results.errors %}
+        <details class="panel" open>
+          <summary>Error Details</summary>
+          {% for err in garmin_results.errors %}
+            <div class="alert alert-error"><strong>Activity {{ err.activity_id }}</strong>: {{ err.error }}</div>
+          {% endfor %}
+        </details>
+      {% endif %}
+    {% endif %}
+
+  {% endif %}
+</section>

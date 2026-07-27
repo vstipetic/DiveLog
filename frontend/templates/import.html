@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h2>Import Dives</h2>
+
+  <!-- Storage folder -->
+  <section class="panel">
+    <h3>Storage Settings</h3>
+    <form method="post" action="{{ url_for('imports.set_storage_folder') }}" class="inline-form">
+      <label for="storage_folder">Storage Folder</label>
+      <input type="text" id="storage_folder" name="storage_folder" value="{{ storage_folder }}"
+             title="Path to the folder where dive files will be stored">
+      <button type="submit" class="btn">Apply</button>
+    </form>
+    {% if not storage_folder_exists %}
+      <div class="alert alert-warning">
+        Folder '{{ storage_folder }}' does not exist. Click 'Apply' to create it.
+      </div>
+    {% endif %}
+  </section>
+
+  <!-- Import mode -->
+  <section class="panel">
+    <h3>Import Mode</h3>
+    <nav class="mode-tabs">
+      <a href="{{ url_for('pages.import_page', mode='single') }}" class="tab {% if mode == 'single' %}active{% endif %}">Single Dive</a>
+      <a href="{{ url_for('pages.import_page', mode='bulk') }}" class="tab {% if mode == 'bulk' %}active{% endif %}">Bulk Import</a>
+      <a href="{{ url_for('pages.import_page', mode='garmin') }}" class="tab {% if mode == 'garmin' %}active{% endif %}">Import from Garmin</a>
+    </nav>
+  </section>
+
+  {% if mode == 'single' %}
+    {% include "partials/import_single.html" %}
+  {% elif mode == 'bulk' %}
+    {% include "partials/import_bulk.html" %}
+  {% else %}
+    {% include "partials/import_garmin.html" %}
+  {% endif %}
+
+  <!-- Refresh -->
+  <section class="panel">
+    <h3>Refresh Dives</h3>
+    <div class="inline-form">
+      <form method="post" action="{{ url_for('imports.reload_all_dives') }}">
+        <button type="submit" class="btn btn-primary">Reload All Dives</button>
+      </form>
+      {% if dive_count is not none %}
+        <div class="metric">
+          <div class="metric-label">Dives in Storage</div>
+          <div class="metric-value">{{ dive_count }}</div>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+{% endblock %}

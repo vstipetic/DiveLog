@@ -4,15 +4,22 @@
 
 ## Project Description
 
-DiveLog is a Python-based dive log management application with advanced search and statistics functionality. The main purpose is to extract statistics from dive logs and find interesting trends in diving data. The application parses Garmin dive computer `.fit` files and provides a modern Streamlit web UI for managing dives, gear, and analyzing dive statistics with AI-powered natural language queries.
+DiveLog is a Python-based dive log management application with advanced search and statistics functionality. The main purpose is to extract statistics from dive logs and find interesting trends in diving data. The application parses Garmin dive computer `.fit` files and provides a web UI (Flask backend + Jinja2 frontend) for managing dives, gear, and analyzing dive statistics with AI-powered natural language queries.
 
 ### High-Level Architecture
 
 The application follows a modular architecture with clear separation of concerns:
 
-1. **GUI Layer** (Root directory)
-   - `streamlit_app.py` - Modern Streamlit web UI with AI Chat, Import Dives, and Add Gear tabs
-   - `DiveFilterer.py` - Filter utility functions
+1. **Backend Layer** (`backend/`, entry point `app.py`)
+   - Flask application factory (`backend/__init__.py`)
+   - `backend/state.py` - Server-side session state (agent instance, chat transcript, Garmin client)
+   - `backend/services/` - Application logic wrapping `Utilities/` (chat/agent lifecycle, imports, Garmin, gear, settings)
+   - `backend/routes/` - HTML routes (AI Chat, Import Dives, Add Gear) plus a JSON chat API (`POST /api/chat`)
+   - `DiveFilterer.py` - Filter utility functions (root directory)
+
+1b. **Frontend Layer** (`frontend/`)
+   - `frontend/templates/` - Jinja2 templates (chat, import, gear pages + partials)
+   - `frontend/static/` - CSS and JavaScript; agent-generated Altair charts are serialized to Vega-Lite JSON by the backend and rendered in the browser with vega-embed
 
 2. **Business Logic Layer** (`Utilities/`)
    - `AddDive.py` - Core dive creation and serialization logic
@@ -39,7 +46,7 @@ The application follows a modular architecture with clear separation of concerns
    - `SearchTool.py` - Search and listing tools
    - `ChartTools.py` - Visualization tools (histogram, bar chart, pie chart, scatter plot)
    - `ToolState.py` - Shared state for filter→statistics chaining
-   - `ChartState.py` - Shared state for chart→Streamlit rendering
+   - `ChartState.py` - Shared state for chart→UI rendering (backend serializes charts to Vega-Lite for the browser)
 
 6. **Parser Layer** (`Utilities/Parsers/`)
    - `GarminDiveParser.py` - Garmin .fit file parser
@@ -53,21 +60,21 @@ The application follows a modular architecture with clear separation of concerns
 
 ### Import Workflows
 
-**Single Dive Import** (via Streamlit "Import Dives" tab → `add_dive()`):
+**Single Dive Import** (via the "Import Dives" tab → `add_dive()`):
 - Single dive with full metadata enrichment
 - Auto-extracts: GPS coordinates, gas type, all timeline data
 - Manual input for: location name, buddy, gear, weight, tank pressures, location description
 - Output: Complete `Dive` object in `Storage/Dives/`
 - Use when: Building comprehensive dive log with context
 
-**Bulk Import** (via Streamlit "Import Dives" tab → `bulk_add_dives()`):
+**Bulk Import** (via the "Import Dives" tab → `bulk_add_dives()`):
 - Multiple .fit files from directory - **fully automated, zero manual input required**
 - Auto-extracts ALL available data from .fit files (see "Auto-Extraction" section below)
 - Empty fields: People, Gear, Pressures, Location descriptions (not in .fit files)
 - Output: `Dive` objects with auto-extracted metadata in `Storage/BulkDives/`
 - Use when: Quick statistical analysis of large dive collections
 
-**Import from Garmin** (via Streamlit "Import Dives" tab → `Utilities/GarminConnectClient.py`):
+**Import from Garmin** (via the "Import Dives" tab → `Utilities/GarminConnectClient.py`):
 - Logs into Garmin Connect and downloads dive `.fit` files directly — no manual export needed
 - Uses the unofficial `garminconnect` library (mobile-SSO OAuth, same flow as the Garmin app; supports MFA)
 - Login token cached under `Storage/.garmin_tokens/` (git-ignored); password/MFA only needed on first login
@@ -120,7 +127,7 @@ The parser (`GarminDiveParser.py`) extracts extensive data from Garmin .fit file
 - **langchain-google-genai**: Google Gemini LLM integration
 - **langchain-openai**: OpenAI GPT integration
 - **langchain-anthropic**: Anthropic Claude integration
-- **streamlit**: Modern web UI framework
+- **flask**: Web backend framework (Jinja2 templates render the frontend)
 - **pickle** - Serialization format (Python standard library)
 
 ### Build System
@@ -251,11 +258,11 @@ Base `Gear` class (`Utilities/ClassUtils/GearClasses.py`) contains:
    - Gear serialization/deserialization
    - Gear selection in dive creation
 
-3. **Streamlit Web UI** (`streamlit_app.py`)
+3. **Web UI** (`backend/` + `frontend/`, entry point `app.py`)
    - **AI Chat Tab**: Natural language queries with LLM-powered responses
      - Quick statistics display (total dives, time, avg/max depth)
      - Example query buttons (10 pre-built queries)
-     - Chart rendering (Altair visualizations)
+     - Chart rendering (Altair charts serialized to Vega-Lite, rendered with vega-embed)
    - **Import Dives Tab**: Complete dive import functionality
      - Storage folder selection (default: `Storage/BulkDives`)
      - **Single dive import**: Shows auto-extracted data preview (depth, duration, gas, GPS, etc.)
@@ -300,7 +307,7 @@ Base `Gear` class (`Utilities/ClassUtils/GearClasses.py`) contains:
     - SearchTool.py - 3 search tools (search_dives, get_dive_summary, list_all_dives)
     - ChartTools.py - 4 visualization tools (plot_histogram, plot_bar_chart, plot_pie_chart, plot_scatter)
     - ToolState.py - Shared state for tool chaining (filter → statistics/charts)
-    - ChartState.py - Shared state for chart rendering (tools → Streamlit)
+    - ChartState.py - Shared state for chart rendering (tools → UI)
     - All tools use `ConfigDict(arbitrary_types_allowed=True)` for attrs compatibility
 
 ### Tool Chaining via ToolState
@@ -341,7 +348,16 @@ Without this mechanism, statistics would incorrectly operate on ALL dives instea
 
 ```
 DiveLog/
-├── streamlit_app.py              # Streamlit web UI (AI Chat + Import Dives + Add Gear)
+├── app.py                        # Entry point (Flask app; AI Chat + Import Dives + Add Gear)
+├── backend/                      # Flask backend
+│   ├── __init__.py               # Application factory
+│   ├── state.py                  # Server-side session state
+│   ├── utils.py                  # Formatting helpers (also Jinja filters)
+│   ├── services/                 # chat, imports, Garmin, gear, settings
+│   └── routes/                   # Page routes + JSON chat API
+├── frontend/                     # Jinja2 frontend
+│   ├── templates/                # base, chat, import (+ partials), gear
+│   └── static/                   # css/style.css, js/chat.js, js/gear.js
 ├── DiveFilterer.py               # Root-level filter utilities
 ├── explorer.ipynb                # Jupyter notebook (exploration/testing)
 ├── pyproject.toml                # uv/pip dependencies
@@ -399,7 +415,7 @@ The agent system supports natural language queries like:
 - "Find all dives with buddy 'John'"
 - "What's my total dive time this year?"
 
-**Visualizations (with Altair charts rendered in Streamlit):**
+**Visualizations (Altair charts rendered in the browser via Vega-Lite):**
 - "Plot the distribution of my dive depths"
 - "Show a bar chart of dives by month"
 - "Create a pie chart of dives by location"

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}DiveLog - AI Assistant{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+<div class="layout">
+
+  <!-- ======================= Sidebar (settings) ======================= -->
+  <aside class="sidebar">
+    <h2>⚙️ Settings</h2>
+
+    {% if not sidebar.has_api_key %}
+      <div class="alert alert-error">No API keys found!</div>
+      <div class="alert alert-info">
+        Create a <code>.env</code> file in the project root and set one of:
+        <ul>
+          <li><code>OPENAI_API_KEY</code></li>
+          <li><code>GEMINI_API_KEY</code></li>
+          <li><code>ANTHROPIC_API_KEY</code></li>
+          <li><code>OPENROUTER_API_KEY</code></li>
+        </ul>
+      </div>
+    {% else %}
+      <form method="post" action="{{ url_for('settings.set_provider') }}">
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+        <label for="key_name">Select LLM Provider</label>
+        <select id="key_name" name="key_name" onchange="this.form.submit()">
+          {% for key_name in sidebar.api_key_names %}
+            <option value="{{ key_name }}" {% if key_name == sidebar.selected_key_name %}selected{% endif %}>{{ key_name }}</option>
+          {% endfor %}
+        </select>
+
+        {% if sidebar.provider == 'openrouter' %}
+          <label for="openrouter_model">OpenRouter model</label>
+          <select id="openrouter_model" name="openrouter_model" onchange="this.form.submit()">
+            {% for label in sidebar.openrouter_models %}
+              <option value="{{ label }}" {% if label == sidebar.openrouter_model_label %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        {% endif %}
+      </form>
+
+      <hr>
+      <p class="caption">Using: {{ sidebar.provider_label }}</p>
+      <p class="caption">Model: {{ sidebar.current_model }}</p>
+    {% endif %}
+
+    <hr>
+    <h3>Quick Actions</h3>
+    <form method="post" action="{{ url_for('settings.reload_dives') }}">
+      <input type="hidden" name="next" value="{{ request.full_path }}">
+      <button type="submit" class="btn btn-block">🔄 Reload Dives</button>
+    </form>
+    <form method="post" action="{{ url_for('settings.clear_chat') }}">
+      <input type="hidden" name="next" value="{{ request.full_path }}">
+      <button type="submit" class="btn btn-block">🗑️ Clear Chat</button>
+    </form>
+
+    <hr>
+    <details>
+      <summary>❓ Help</summary>
+      <div class="help-content">
+        <p><strong>How to use:</strong></p>
+        <ol>
+          <li>Make sure you have dive data in <code>Storage/Dives/</code></li>
+          <li>Ask questions in natural language</li>
+          <li>The AI will analyze your dives and respond</li>
+        </ol>
+        <p><strong>Example questions:</strong></p>
+        <ul>
+          <li>"What's my average depth?"</li>
+          <li>"How many dives did I do this year?"</li>
+          <li>"Show me my deepest dives"</li>
+          <li>"Who is my most common buddy?"</li>
+        </ul>
+      </div>
+    </details>
+  </aside>
+
+  <!-- ======================= Main content ======================= -->
+  <main class="content">
+    <h1>DiveLog - AI Dive Statistics Assistant</h1>
+
+    <nav class="tabs">
+      <a href="{{ url_for('pages.chat_page') }}" class="tab {% if active_tab == 'chat' %}active{% endif %}">AI Chat</a>
+      <a href="{{ url_for('pages.import_page') }}" class="tab {% if active_tab == 'import' %}active{% endif %}">Import Dives</a>
+      <a href="{{ url_for('pages.gear_page') }}" class="tab {% if active_tab == 'gear' %}active{% endif %}">Add Gear</a>
+    </nav>
+
+    {% with flashes = get_flashed_messages(with_categories=true) %}
+      {% if flashes %}
+        <div class="flashes">
+          {% for category, message in flashes %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% block scripts %}{% endblock %}
+</body>
+</html>
