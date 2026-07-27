@@ -85,6 +85,18 @@ All notable changes to DiveLog are documented in this file.
   agree to within centimetres (the `.fit` reading is just rounded to six
   decimals), so preferring Garmin never contradicts the watch; a plain folder
   import has no metadata and still relies on the `.fit` alone.
+- `repair_dive_people.py` re-syncs both the buddy *and* the group from Garmin,
+  superseding `repair_dive_buddies.py`. That script could only ever add people to
+  a group, which was right while the group came from an LLM reading freeform
+  notes, but wrong once the Garmin records are curated: the stored group holds
+  the model's guesses at names ("Maksim", "Vito", "Darko K.", and welded pairs
+  like "Demi Helena"), Garmin holds the real ones, and keeping both is what
+  splits one diver's statistics in two. The group is now mirrored from Garmin,
+  with removals classified as *name upgrades* (the dropped name's parts are
+  covered by names Garmin kept, including nicknames like "Kreso" for
+  "Kresismir") or *genuine drops* (people only the LLM knew about), so a dry run
+  shows what a re-sync actually costs. `--keep-unmatched` takes every upgrade but
+  retains the genuine drops; `--union` restores the old never-remove behaviour.
 - `repair_dive_coordinates.py` backfills the position on dives already on disk,
   rewriting only `location.entry`. Fills in missing coordinates by default;
   `--overwrite` also corrects stored positions that disagree with Garmin by more
