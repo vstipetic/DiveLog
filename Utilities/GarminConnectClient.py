@@ -226,11 +226,24 @@ _DIVE_BOILERPLATE_RE = re.compile(
 )
 
 
+def normalise_whitespace(text: str) -> str:
+    """
+    Collapse every run of whitespace to one space and trim the ends.
+
+    Typing "Maja  Orlovic" into the Garmin app costs nothing there, but it makes
+    a name that no longer equals "Maja Orlovic" anywhere downstream - a distinct
+    entry in the group set, a separate bar on a per-buddy chart, a person search
+    that finds one dive instead of ten. ``str.split()`` splits on Unicode
+    whitespace, so this also absorbs tabs, newlines and non-breaking spaces.
+    """
+    return " ".join((text or "").split())
+
+
 def _split_names(text: str) -> List[str]:
     """Split a free-text list of people into cleaned, de-duplicated names."""
     names = []
     for part in _NAME_SEP_RE.split(text or ""):
-        name = part.strip()
+        name = normalise_whitespace(part)
         if name and name not in names:
             names.append(name)
     return names
@@ -280,10 +293,10 @@ def infer_location_name(activity_name: Optional[str], garmin_location: Optional[
         The inferred dive-site name (``""`` if nothing usable is available).
     """
     stripped = _DIVE_BOILERPLATE_RE.sub("", activity_name or "")
-    stripped = re.sub(r"\s+", " ", stripped).strip(" -")
+    stripped = normalise_whitespace(stripped).strip(" -")
     if stripped:
         return stripped
-    return (garmin_location or "").strip()
+    return normalise_whitespace(garmin_location)
 
 
 def get_dive_metadata(client: Garmin, activity_id: str) -> Dict[str, Any]:
@@ -481,6 +494,7 @@ __all__ = [
     "get_dive_metadata",
     "parse_group_from_note",
     "infer_location_name",
+    "normalise_whitespace",
     "dive_filename",
     "already_imported",
     "download_fit",
