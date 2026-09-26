@@ -85,6 +85,30 @@ All notable changes to DiveLog are documented in this file.
   agree to within centimetres (the `.fit` reading is just rounded to six
   decimals), so preferring Garmin never contradicts the watch; a plain folder
   import has no metadata and still relies on the `.fit` alone.
+- **Names are normalised on import.** A name typed as `Maja  Orlovic` in the
+  Garmin app stopped equalling `Maja Orlovic` everywhere downstream — a second
+  entry in the group set, a separate bar on a per-buddy chart, a person search
+  finding one dive instead of ten. `_split_names()` now runs every name through
+  `normalise_whitespace()`, which collapses any run of whitespace (including
+  tabs, newlines and non-breaking spaces) to a single space. `infer_location_name()`
+  uses it too, so the Garmin `locationName` fallback is normalised as well as the
+  dive name.
+- `repair_dive_whitespace.py` tidies the same fields on dives already stored,
+  reading nothing from Garmin. Names and the site name collapse fully; dive notes
+  keep their line breaks — they are prose written across several lines — and lose
+  only stray horizontal whitespace. Dry-run by default; `--apply` to write.
+- `repair_dive_people.py` re-syncs both the buddy *and* the group from Garmin,
+  superseding `repair_dive_buddies.py`. That script could only ever add people to
+  a group, which was right while the group came from an LLM reading freeform
+  notes, but wrong once the Garmin records are curated: the stored group holds
+  the model's guesses at names ("Maksim", "Vito", "Darko K.", and welded pairs
+  like "Demi Helena"), Garmin holds the real ones, and keeping both is what
+  splits one diver's statistics in two. The group is now mirrored from Garmin,
+  with removals classified as *name upgrades* (the dropped name's parts are
+  covered by names Garmin kept, including nicknames like "Kreso" for
+  "Kresismir") or *genuine drops* (people only the LLM knew about), so a dry run
+  shows what a re-sync actually costs. `--keep-unmatched` takes every upgrade but
+  retains the genuine drops; `--union` restores the old never-remove behaviour.
 - `repair_dive_coordinates.py` backfills the position on dives already on disk,
   rewriting only `location.entry`. Fills in missing coordinates by default;
   `--overwrite` also corrects stored positions that disagree with Garmin by more
